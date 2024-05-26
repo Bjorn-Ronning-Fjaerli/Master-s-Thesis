@@ -1,0 +1,2 @@
+In this folder I have uploaded the R scripts for preparing and analyzing the data I used in my Master's thesis. It turns out github interpreted the rendered Quarto documents as html code, so I have now uploaded the quarto documents as well. 
+Please note that I cannot distibute the actual data that I used for the analysis. If you wish to replicate my analysis with the PAIRDEM company data, please contact Elin Haugsgjerd Allern or Vibeke Wøien Hansen.
