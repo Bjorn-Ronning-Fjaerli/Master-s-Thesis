@@ -1,0 +1,1118 @@
+---
+title: "MA_Analysis"
+author: "Bjørn Rønning Fjærli"
+format: html
+editor: visual
+execute: 
+  echo: true
+  output: false
+---
+
+## loading data:
+
+```{r}
+companies_analysis <- read.csv("data/companies_analysis.csv")
+
+```
+
+
+
+
+
+```{r}
+## necessary packages:
+
+library(tidyverse)
+library(ordinal)
+library(stargazer)
+library(lme4)
+library(nlme)
+library(multilevel)
+library(lmerTest)
+library(ggeffects)  
+library(ggplot2)
+library(foreign)
+library(car) 
+library(nnet)
+library(texreg)
+library(sandwich)
+library(modelsummary)
+library(performance)
+
+set.seed(123)
+
+```
+
+
+
+
+
+```{r}
+## treating NAS and making dependent variable categorical: 
+
+companies_analysis <- companies_analysis %>%
+  mutate(influence_cont = 
+           ifelse(influence == 6666 | influence == 8888, NA, influence))
+
+
+companies_analysis <- companies_analysis %>%
+  mutate(inf_factor = 
+           as.factor(influence_cont))
+
+
+### VIF tests
+multicmod <- clmm(inf_factor ~ party_power3 + partygoals + country + lhrw + niche + factordist_taxvspending + factordist_regulation + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)
+
+
+multicmod1 <- clmm(inf_factor ~ party_power3 + partygoals + country + lhrw + niche + factordist_taxvspending + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)
+
+multicmod2 <- clmm(inf_factor ~ party_power3 + partygoals + country + lhrw + niche + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)
+
+### tabulating VIF tests for appendix:
+multiCtab3 <- as.data.frame(check_collinearity(multicmod2))
+multiCtab3
+
+cor.test(companies_analysis$partygoals, companies_analysis$party_power3)
+
+```
+
+
+
+### Empty models and ICC:
+```{r}
+
+### Calculating ICC based on linear empty models: 
+library(sjstats)
+
+lmnull <- lmer(influence_cont ~ 1 + (1 | observation_id), data = companies_analysis)
+
+summary(lmnull)
+
+icc_company <- performance::icc(lmnull)
+
+# Suggests multilevel  
+
+lmnull.2 <- lmer(influence_cont ~ 1 + (1 | party), data = companies_analysis)
+ summary(lmnull.2)
+icc_party <- performance::icc(lmnull.2)
+
+# suggests multilevel 
+
+lmnull3 <- lmer(influence_cont ~ 1 + (1 | policyarea), data = companies_analysis)
+ summary(lmnull3)
+icc_policyarea <- performance::icc(lmnull3)
+
+htmlreg(list(lmnull, lmnull.2, lmnull3),
+        digits=2, 
+        stars=c(0.01, 0.05, 0.1), 
+        caption.above=T,
+        file = "emptymod.html")
+
+
+
+
+icc_company
+icc_party
+
+icc_policyarea
+
+```
+
+# Main analysis: Cumulative logit mixed models
+
+### Testing company hypotheses:
+
+```{r}
+
+
+#### Making control variable: Importance attributed to parties ######
+companies_analysis <- companies_analysis %>%
+  mutate(important_cpo = ifelse(important_cpo == 8888, NA, important_cpo)) %>%
+  mutate(important_pp = ifelse(important_pp == 8888, NA, important_pp)) %>%
+  mutate(important_profconsult = ifelse(important_profconsult == 8888, NA, important_profconsult)) 
+
+#companies_analysis <- companies_analysis %>%
+ # mutate(partyimportant = (important_cpo+important_pp)/2)
+
+## new try, to minimize number of NAs:
+companies_analysis <- companies_analysis %>%
+  mutate(partyimp2 =
+           case_when(is.na(important_cpo)== FALSE & 
+                       is.na(important_pp) == FALSE ~
+                       (important_cpo + important_pp)/2,
+                     is.na(important_cpo) == TRUE & 
+                       is.na(important_pp) == FALSE  ~
+                       important_pp,
+                     is.na(important_cpo) == FALSE & 
+                       is.na(important_pp) == TRUE ~
+                       important_cpo))
+
+
+
+#### making binary variables as factor (for plotting purposes) #####
+
+companies_analysis <- companies_analysis %>%
+  mutate(policy_workers = as.factor(policy_workers)) %>%
+  mutate(talk = as.factor(talk)) 
+  
+
+####### Estimating Cumulative logit mixed models ############
+
+## hypotese 1: 
+model1.1 <- clmm(inf_factor ~ policy_workers + country + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)
+
+
+# hypotese 2:
+model1.2 <- clmm(inf_factor ~ talk + country + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)
+
+
+# H1 + kontroll:
+model1.3 <- clmm(inf_factor ~ policy_workers + country + fulltimeworkers + partyimp2 + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis) 
+
+
+
+# H2 + kontroll:
+model1.4 <- clmm(inf_factor ~ talk + country + fulltimeworkers + partyimp2 + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)  
+
+# H1 + H2 + kontroll:
+model1.5 <- clmm(inf_factor ~ policy_workers + talk + country +  fulltimeworkers + partyimp2 + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis) 
+
+## What happens if policy preferences included on company side?:
+model1.6 <- clmm(inf_factor ~ factordist_taxvspending + factordist_regulation + policy_workers + talk + country + fulltimeworkers + partyimp2 + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)
+
+
+### regression table for thesis ###
+
+htmlreg(list(model1.1, model1.2, model1.3, model1.4, model1.5), 
+        digits=2, 
+        stars=c(0.01, 0.05, 0.1),
+        custom.coef.map = list("policy_workers1" = "Policy Workers", 
+                 "talk1" = "Access",
+                 "fulltimeworkers" = "Employees in Total",
+                 "partyimp2" = "Importance Attributed to Parties",
+                 "0|1" = "Intercept 0|1",
+                 "1|2" = "Intercept 1|2",
+                 "2|3" = "Intercept 2|3"),
+        caption.above=T,
+        caption = "Table 5.1: Cumulative logit mixed models with company variables",
+        custom.note = "%stars. Country fixed effects are included in all models",
+        file = "CLMM_company1.html")
+
+
+
+```
+
+
+
+
+### Testing party side hypotheses
+
+```{r}
+
+## hypotese 3 
+model2.1 <- clmm(inf_factor ~ factordist_taxvspending + factordist_regulation + country + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)
+
+
+
+
+## hypotese 4 
+model2.2 <- clmm(inf_factor ~ party_power3 + country + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)
+
+
+
+## hypotese 5
+model2.3 <- clmm(inf_factor ~ partygoals + country + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)
+
+## H 3-5 + kontroll:
+
+## H3 + kontroll:
+model2.4 <- clmm(inf_factor ~ factordist_taxvspending + factordist_regulation + country + lhrw + niche + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)
+
+
+## H4 + kontroll:
+model2.5 <- clmm(inf_factor ~ party_power3 + country + lhrw + niche + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)
+
+## H5 + kontroll:
+model2.6 <- clmm(inf_factor ~ partygoals + country + lhrw + niche + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)
+
+## H3 + H4 + H5 (+kontroll)
+model2.7 <- clmm(inf_factor ~ factordist_taxvspending + factordist_regulation + party_power3 + partygoals + country + lhrw + niche + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)
+
+
+
+
+
+### Regression table for thesis: 
+htmlreg(list(model2.1, model2.2, model2.3, model2.4, model2.5, model2.6, model2.7),
+        digits=2, 
+        stars=c(0.01, 0.05, 0.1),
+        custom.coef.map = list("factordist_taxvspendingVery proximate" = "[Taxation vs Spending] Very proximate preferences",
+                 "factordist_taxvspendingsomewhat proximate" = "[Taxation vs Spending] Somewhat proximate preferences",
+                 "factordist_taxvspendingnot proximate" = "[Taxation vs Spending] Not proximate preferences",
+                 "factordist_taxvspendingdont know/not applicable" = "[Taxation vs Spending] don't know/not applicable",
+                 "factordist_regulationVery proximate" = "[Regulation] Very proximite preferences",
+                 "factordist_regulationsomewhat proximate" = "[Regulation] Somewhat proximite preferences",
+                 "factordist_regulationnot proximate" = "[Regulation] Not proximite preferences",
+                 "factordist_regulationdont know/not applicable" = "[Regulation] Don't know/not applicable",
+          "party_power3" = "Party Power", 
+                 "partygoals" = "Compromise Willingness",
+                 "lhrw" = "Intra-Party Democracy",
+                 "niche" = "Party Nicheness",
+                 "0|1" = "Intercept 0|1",
+                 "1|2" = "Intercept 1|2",
+                 "2|3" = "Intercept 2|3"),
+        caption.above=T,
+        caption = "Table 2. Cumulative logit mixed models with party characteristics as independent variables",
+        custom.note = "%stars. Country Fixed effects are included in all models",
+        file = "CLMM_party1.html")
+
+
+
+```
+
+
+# Plotting effects
+
+
+```{r}
+
+
+
+#### policy workers ####
+# uten kontroll:
+ggp_mod1.1=ggpredict(model1.1, terms="policy_workers [all]", type="fe")
+ggp_mod1.1
+
+plot(ggp_mod1.1, show_ci = TRUE, ci_style = "ribbon") +
+  geom_rug(sides = "b")
+
+#med kontroll:
+ggp_mod1.1_kont=ggpredict(model1.5, terms="policy_workers [all]", type="fe")
+ggp_mod1.1_kont
+
+plot(ggp_mod1.1_kont, show_ci = TRUE, ci_style = "ribbon") +
+  geom_rug(sides = "b")+
+  labs(x = "Policy Workers",
+       y = "Predicted Probability of Influence",
+       title ="Predicted Probabilities of Influence over Policy Workers")
+
+#### Access ####
+#uten kontroll:
+ggp_mod1.2 = ggpredict(model1.2, terms = "talk[all]", type = "fe")
+ggp_mod1.2
+
+plot(ggp_mod1.2, show_ci = TRUE, ci_style = "ribbon") + 
+  geom_rug(sides = "b")  
+
+# med kontroll: 
+ggp_mod1.2_kont = ggpredict(model1.5, terms = "talk [all]", type = "fe")
+ggp_mod1.2_kont
+
+plot(ggp_mod1.2_kont, show_ci = TRUE, ci_style = "ribbon") + 
+  geom_rug(sides = "b")+
+  labs(x = "Access",
+       y = "Predicted Probability of influence",
+       title ="Predicted Probabilities of influence over Access")
+
+#### policydistance ####
+#uten kontroll
+ggp_mod2.1=ggpredict(model2.7, terms = "factordist_taxvspending [Very proximate, not at all proximate]", type = "fe")
+print(ggp_mod2.1, n = Inf)
+
+plot(ggp_mod2.1, show_ci = TRUE, ci_style = "ribbon") +
+  geom_rug(sides = "b") +
+  labs(x = "Proximity of Policy Preferences, Taxation vs Spending",
+       y= "Predicted Probabilities of Influence",
+       title = "Predicted probabilities of Influence over Preferential Proximity")
+
+ggp_mod2.1.1=ggpredict(model2.7, terms = "factordist_regulation [Very proximate, not at all proximate]", type = "fe")
+print(ggp_mod2.1.1, n = Inf)
+
+plot(ggp_mod2.1.1, show_ci = TRUE, ci_style = "ribbon") +
+  geom_rug(sides = "b") +
+  labs(x = "Proximity of Policy Preferences, Regulation",
+       y = "Predicted Probabilities of Influence",
+       title = "Predicted Probabilities of Influence over Preferential Proximity")
+
+
+
+
+
+#### party power ####
+#uten kontroll:
+ggp_mod2.2=ggpredict(model2.2, terms = "party_power3 [all]", type = "fe")
+print(ggp_mod2.2, n = Inf)
+
+plot(ggp_mod2.2, show_ci = TRUE, ci_style = "ribbon") +
+  geom_rug(sides = "b")
+
+#med kontroll:
+ggp_mod2.2_kont=ggpredict(model2.7, terms = "party_power3 [all]", type = "fe")
+
+print(ggp_mod2.2_kont, n = Inf)
+
+plot(ggp_mod2.2_kont, show_ci = TRUE, ci_style = "ribbon") +
+  geom_rug(sides = "b") + 
+  labs(x = "Party Power",
+       y = "Predicted Probabilities of Influence",
+       title = "Predicted Probabilities of Influence over Party Power,
+       all controls included")
+
+### without partygoals ###  
+ggp_power = ggpredict(model2.5, terms = "party_power3 [all]", type = "fe")
+
+print(ggp_power, n = Inf)
+
+plot(ggp_power, show_ci = TRUE, ci_style = "ribbon") +
+  geom_rug(sides = "b") +
+  labs(x = "Party Power",
+       y = "Predicted Probabilities of Influence",
+       title = "Predicted Probabilities of Influence over Party Power, 
+       Without Controlling for Compromise Willingness")
+  
+
+
+#### party goals ####
+#uten kontroll:
+ggp_mod2.3=ggpredict(model2.3, terms = "partygoals [all]", type = "fe")
+
+ggp_mod2.3
+
+plot(ggp_mod2.3, show_ci = TRUE, ci_style = "ribbon") +
+  geom_rug(sides = "b") 
+
+#med kontroll:
+ggp_mod2.3_kont=ggpredict(model2.7, terms = "partygoals [all]", type = "fe")
+
+ggp_mod2.3_kont
+
+plot(ggp_mod2.3_kont, show_ci = TRUE, ci_style = "ribbon") +
+  geom_rug(sides = "b")+ 
+  labs(x = "Compromise Willingness",
+       y = "Predicted Probabilities of Influence",
+       title = "Predicted Probabilities of Influence over Compromise Willingness, 
+       all Controls Included")
+
+###uten party power ###
+ggp_compromise = ggpredict(model2.6, terms = "partygoals [all]", type = "fe")
+ggp_compromise
+
+plot(ggp_compromise, show_ci = TRUE, ci_style = "ribbon") +
+  geom_rug(sides = "b") +
+  labs(x = "Compromise Willingness",
+       y = "Predicted Probabilities of Influence",
+       title = "Predicted Probabilities of Influence over Compromise Willingness, 
+       Without Controlling for Party Power")
+
+#### Intra-party democracy ####
+ggp_IDP = ggpredict(model2.7, terms = "lhrw [all]", type = "fe")
+
+ggp_IDP
+
+
+plot(ggp_IDP, show_ci = TRUE, ci_style = "ribbon") +
+  geom_rug(sides = "b") +
+  labs(x = "Intra-Party Democracy",
+       y = "Predicted Proababilities of Influence",
+       title ="Predicted Probabilities of Influence over Intra-Party Democracy")
+
+
+
+```
+
+
+
+# Descriptive statistics
+
+
+```{r}
+
+### Dependent Variable:  
+
+
+companies_analysis <- companies_analysis %>%
+  mutate(inf_desc = case_when(
+    inf_factor == 0 ~ "Not at all influential",
+    inf_factor == 1 ~ "Not very influential",
+    inf_factor == 2 ~ "Somewhat influenital",
+    inf_factor == 3 ~ "Very influenital",
+    is.na(inf_factor) == TRUE ~ "Missing"))
+
+tab_UV_desc <- as.data.frame(addmargins(table(companies_analysis$inf_desc)))
+
+tab_UV_desc
+
+```
+
+
+
+```{r}
+
+
+### Independent variables:
+myvars <- c("policy_workers", 
+            "donations", 
+            "talk", 
+            "factordist_taxvspending", 
+            "factordist_regulation", 
+            "party_power3", 
+            "partygoals")
+
+depvar_desc <- as.data.frame(companies_analysis[myvars])
+
+depvar_desc <- depvar_desc %>%
+  mutate(policy_workers = as.numeric(policy_workers)) %>%
+  mutate(talk = as.numeric(talk))
+
+stargazer(depvar_desc, type="html", digits=2)
+
+stargazer(depvar_desc, type = "text", title="Descriptive statistics", digits=1, out="table1.txt")
+
+
+### categorical independent variables:
+desctab_tax <- as.data.frame(addmargins(table(companies_analysis$factordist_taxvspending)))
+
+desctab_regulation <- as.data.frame(addmargins(table(companies_analysis$factordist_regulation)))
+
+desctab_regulation
+
+
+```
+
+
+
+```{r}
+
+
+### Control variables 
+myconts <- c("fulltimeworkers", "partyimp2", "lhrw", "niche")
+
+contvar_desc <- as.data.frame(companies_analysis[myconts])
+
+
+stargazer(contvar_desc, type="html", digits=2)
+
+stargazer(depvar_desc, type = "text", title="Descriptive statistics", digits=1, out="table1.txt")
+
+
+```
+
+
+# Robusthetstester
+
+
+
+#### 1. CLMM, all independent variables included.
+
+```{r}
+
+
+
+## Alle variabler sammen. 
+
+model3 <- clmm(inf_factor ~ policy_workers + talk + factordist_taxvspending + factordist_regulation + party_power3 + partygoals + fulltimeworkers + partyimp2 + lhrw + niche + country + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)
+
+
+modelsummary(list(model1.1, model1.2, model1.3, model1.4, model1.5, model1.6, model2.1, model2.2, model2.3, model2.4, model2.5, model2.6, model2.7, model3))
+
+### Making giant html table:
+htmlreg(list(model1.3, model1.4, model1.5, model1.6, model2.4, model2.5, model2.6, model2.7, model3), 
+        digits=2, 
+        stars=c(0.01, 0.05, 0.1),
+        custom.coef.map = list("policy_workers1" = "Policy Workers", 
+                 "talk1" = "Access",
+                 "factordist_taxvspendingVery proximate" = "[Taxation vs Spending] Very proximate preferences",
+                 "factordist_taxvspendingsomewhat proximate" = "[Taxation vs Spending] Somewhat proximate preferences",
+                 "factordist_taxvspendingnot proximate" = "[Taxation vs Spending] Not proximate preferences",
+                 "factordist_taxvspendingdont know/not applicable" = "[Taxation vs Spending] don't know/not applicable",
+                 "factordist_regulationVery proximate" = "[Regulation] Very proximite preferences",
+                 "factordist_regulationsomewhat proximate" = "[Regulation] Somewhat proximite preferences",
+                 "factordist_regulationnot proximate" = "[Regulation] Not proximite preferences",
+                 "factordist_regulationdont know/not applicable" = "[Regulation] Don't know/not applicable",
+          "party_power3" = "Party Power", 
+                 "partygoals" = "Compromise Willingness",
+                 "fulltimeworkers" = "Employees in Total",
+                 "partyimp2" = "Importance Attributed to Parties",
+                 "lhrw" = "Intra-Party Democracy",
+                 "niche" = "Party Nicheness",
+          "countryUK" = "Country fixed effect UK",
+          "countryNorway" = "Country fixed effect Norway",
+                 "0|1" = "Intercept 0|1",
+                 "1|2" = "Intercept 1|2",
+                 "2|3" = "Intercept 2|3"),
+        caption.above=T,
+        caption = "Table 1. Cumulative logit mixed models with all independent variables",
+        custom.note = "%stars. Country fixed effects are included in all models",
+        file = "CLMM_all1.html")
+
+
+
+screenreg(list(model1.1, model1.2, model1.3, model1.4, model1.5, model2.1, model2.2, model2.3, model2.4, model2.5, model2.6, model2.7, model3), digits=2, stars=c(0.01, 0.05, 0.1), caption.above=T)
+
+
+
+```
+
+
+
+#### 2. Multicolinearity issues for proximity variables? 
+
+```{r}
+
+
+
+model2.1a <- clmm(inf_factor ~ factordist_taxvspending + country + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)
+
+model2.1b <- clmm(inf_factor ~ factordist_regulation + country + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)
+
+model2.7a <- clmm(inf_factor ~ factordist_taxvspending + party_power3 + partygoals + country + lhrw + niche + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)
+
+model2.7b <- clmm(inf_factor ~ factordist_regulation + party_power3 + partygoals + country + lhrw + niche + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)
+
+htmlreg(list(model2.1a, model2.1b, model2.7a, model2.7b, model2.7),
+         digits=2, 
+        stars=c(0.01, 0.05, 0.1),
+        custom.coef.map = list(
+                 "factordist_taxvspendingVery proximate" = "[Taxation vs Spending] Very proximate preferences",
+                 "factordist_taxvspendingsomewhat proximate" = "[Taxation vs Spending] Somewhat proximate preferences",
+                 "factordist_taxvspendingnot proximate" = "[Taxation vs Spending] Not proximate preferences",
+                 "factordist_taxvspendingdont know/not applicable" = "[Taxation vs Spending] don't know/not applicable",
+                 "factordist_regulationVery proximate" = "[Regulation] Very proximite preferences",
+                 "factordist_regulationsomewhat proximate" = "[Regulation] Somewhat proximite preferences",
+                 "factordist_regulationnot proximate" = "[Regulation] Not proximite preferences",
+                 "factordist_regulationdont know/not applicable" = "[Regulation] Don't know/not applicable",
+          "party_power3" = "Party Power", 
+                 "partygoals" = "Compromise Willingness",
+                 "lhrw" = "Intra-Party Democracy",
+                 "niche" = "Party Nicheness",
+                 "0|1" = "Intercept 0|1",
+                 "1|2" = "Intercept 1|2",
+                 "2|3" = "Intercept 2|3"),
+        caption.above=T,
+        caption = "Table 1. Cumulative logit mixed models with proximity variables added separately",
+        custom.note = "%stars. Country fixed effects are included in all models",
+        file = "CLMM_taxreg1.html")
+
+```
+
+
+
+
+#### 3. Linear models with random intercepts
+
+```{r}
+
+## Adding continous influence cariable for robustness tests
+
+#innflytelse kontinuerlig (for OLS robusthetstest):
+companies_analysis <- companies_analysis %>%
+  mutate(influence_cont = 
+           ifelse(influence == 6666 | influence == 8888, NA, influence))
+
+### Company characteristics ###
+
+## H1 
+lmri1 <- lmer(influence_cont ~ policy_workers + country + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)
+
+
+
+# H 2:
+lmri1.2 <- lmer(influence_cont ~ talk + country + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)
+
+
+# H1 + kontroll:
+lmri1.3 <- lmer(influence_cont ~ policy_workers + country + fulltimeworkers + partyimp2 + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis) 
+
+
+
+# H2 + kontroll:
+lmri1.4 <- lmer(influence_cont ~ talk + country + fulltimeworkers + partyimp2 + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)  
+
+# H1 + H2 + kontroll:
+lmri1.5 <- lmer(influence_cont ~ policy_workers + talk + country + fulltimeworkers + partyimp2 + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis) 
+
+
+
+
+htmlreg(list(lmri1, lmri1.2, lmri1.3, lmri1.4, lmri1.5), 
+        digits=2, stars=c(0.01, 0.05, 0.1),
+        
+        custom.coef.map = list("policy_workers1" = "Policy Workers", 
+                 "talk1" = "Access",
+                 "fulltimeworkers" = "Employees in Total",
+                 "partyimp2" = "Importance Attributed to Parties",
+                 "0|1" = "Intercept 0|1",
+                 "1|2" = "Intercept 1|2",
+                 "2|3" = "Intercept 2|3"),
+        caption.above=T,
+        caption = "Appendix B.2.1. Linear mixed models with company variables",
+        custom.note = "%stars. Country fixed effects are included in all models",
+        file = "LMRI_company1.html")
+
+## Similar results to clmms
+
+
+#### Party characterisitics ####
+
+
+## hypotese 3 
+lmri2.1 <- lmer(influence_cont ~ factordist_taxvspending + factordist_regulation + country + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)
+
+
+
+## hypotese 4 
+lmri2.2 <- lmer(influence_cont ~ party_power3 + country + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)
+
+
+
+## hypotese 5
+lmri2.3 <- lmer(influence_cont ~ partygoals + country + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)
+
+## H 3-5 + kontroll:
+
+## H3 + kontroll:
+lmri2.4 <- lmer(influence_cont ~ factordist_taxvspending + factordist_regulation + country + lhrw + niche + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)
+
+
+## H4 + kontroll:
+lmri2.5 <- lmer(influence_cont ~ party_power3 + country + lhrw + niche + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)
+
+## H5 + kontroll:
+lmri2.6 <- lmer(influence_cont ~ partygoals + country + lhrw + niche + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)
+
+## H3 + H4 + H5 (+kontroll)
+lmri2.7 <- lmer(influence_cont ~ factordist_taxvspending + factordist_regulation + party_power3 + partygoals + country + lhrw + niche + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis)
+
+## table: 
+htmlreg(list(lmri2.1, lmri2.2, lmri2.3, lmri2.4, lmri2.5, lmri2.6, lmri2.7), 
+        digits=2, 
+        stars=c(0.01, 0.05, 0.1),
+        custom.coef.map = list("factordist_taxvspendingVery proximate" = "[Taxation vs Spending] Very proximate preferences",
+                 "factordist_taxvspendingsomewhat proximate" = "[Taxation vs Spending] Somewhat proximate preferences",
+                 "factordist_taxvspendingnot proximate" = "[Taxation vs Spending] Not proximate preferences",
+                 "factordist_taxvspendingdont know/not applicable" = "[Taxation vs Spending] don't know/not applicable",
+                 "factordist_regulationVery proximate" = "[Regulation] Very proximite preferences",
+                 "factordist_regulationsomewhat proximate" = "[Regulation] Somewhat proximite preferences",
+                 "factordist_regulationnot proximate" = "[Regulation] Not proximite preferences",
+                 "factordist_regulationdont know/not applicable" = "[Regulation] Don't know/not applicable",
+          "party_power3" = "Party Power", 
+                 "partygoals" = "Compromise Willingness",
+                 "lhrw" = "Intra-Party Democracy",
+                 "niche" = "Party Nicheness",
+                 "0|1" = "Intercept 0|1",
+                 "1|2" = "Intercept 1|2",
+                 "2|3" = "Intercept 2|3"),
+        caption.above=T,
+        caption = "Appendix B.3.1. Linear mixed models with party variables",
+        custom.note = "%stars. Country Fixed effects are included in all models",
+        file = "LMRI_party1.html")
+
+
+## Result are quite similar, although possibly slightly more support for hypothesis 3 
+
+
+```
+
+
+
+#### 4. Ordered logistic regression models with clustered standard errors
+
+```{r}
+
+library(lmtest)
+
+### coeftests from sandwhich package are included for comparison with the output in the modelsummary tables (at first I didnt trust the output, but they seem correct)
+
+## H1:
+olog1.1 <- clm(inf_factor ~ policy_workers + country, data = companies_analysis, Hess = TRUE)
+summary(olog1.1)
+ct1 <- coeftest(olog1.1, vcov = vcovCL(olog1.1, cluster= ~observation_id + party + policyarea))
+ct1
+
+# H2:
+olog1.2 <- clm(inf_factor ~ talk + country, data = companies_analysis, Hess = TRUE)
+summary(olog1.2)
+ct2 <- coeftest(olog1.2, vcov = vcovCL(olog1.2, cluster= ~observation_id + party + policyarea))
+ct2
+
+## h1 kontroll
+olog1.3 <- clm(inf_factor ~ policy_workers + country + fulltimeworkers + partyimp2, data = companies_analysis, Hess = TRUE)
+summary(olog1.3)
+ct3 <- coeftest(olog1.3, vcov = vcovCL(olog1.3, cluster= ~observation_id + party + policyarea))
+ct3
+
+#h2 kontroll 
+
+
+olog1.4 <- clm(inf_factor ~ talk + country + fulltimeworkers + partyimp2, data = companies_analysis, Hess = TRUE)
+summary(olog1.4)
+ct4 <- coeftest(olog1.4, vcov = vcovCL(olog1.4, cluster= ~observation_id + party + policyarea))
+ct4
+
+# H1 + H2 + kontroll:
+olog1.5 <- clm(inf_factor ~ policy_workers + talk + country + fulltimeworkers + partyimp2, data = companies_analysis, Hess = TRUE) 
+summary(olog1.5)
+ct5 <-  coeftest(olog1.5, vcov = vcovCL(olog1.5, cluster= ~observation_id + party + policyarea))
+ct5
+
+### making table
+modelsummary(list(olog1.1, olog1.2, olog1.3, olog1.4, olog1.5), vcov = ~observation_id + party + policyarea)
+
+
+my_coef_map1 <- c("policy_workers1" = "Policy Workers", 
+                 "talk1" = "Access",
+                 "fulltimeworkers" = "Employees in Total",
+                 "partyimp2" = "Importance Attributed to Parties",
+                 "0|1" = "Intercept 0|1",
+                 "1|2" = "Intercept 1|2",
+                 "2|3" = "Intercept 2|3")
+
+modelsummary(list(olog1.1, 
+                  olog1.2, 
+                  olog1.3, 
+                  olog1.4, 
+                  olog1.5),
+             vcov = ~observation_id + party + policyarea,
+             output = "OLOG_company1.html",
+             digits = 2,
+             stars = T,
+             coef_map = my_coef_map1)
+
+### Konklusjon: samme retning og signifikansniv??, men muligens svakere effekt av policy workers (?)
+
+
+#### PARTY CHARACTERISTICS #### 
+
+## hypotese 3 
+olog2.1 <- clm(inf_factor ~ factordist_taxvspending + factordist_regulation + country, data = companies_analysis, Hess = TRUE)
+summary(olog2.1)
+ct21 <- coeftest(olog2.1, vcov = vcovCL(olog2.1, cluster= ~observation_id + party + policyarea))
+ct21
+
+
+## hypotese 4 
+olog2.2 <- clm(inf_factor ~ party_power3 + country, data = companies_analysis, Hess = TRUE)
+summary(olog2.2)
+ct22 <- coeftest(olog2.2, vcov = vcovCL(olog2.2, cluster= ~observation_id + party + policyarea))
+ct22
+
+## hypotese 5
+olog2.3 <- clm(inf_factor ~ partygoals + country, data = companies_analysis, Hess = TRUE)
+summary(olog2.3)
+ct23 <- coeftest(olog2.3, vcov = vcovCL(olog2.3, cluster= ~observation_id + party + policyarea))
+ct23
+
+
+## H3 + kontroll:
+olog2.4 <- clm(inf_factor ~ factordist_taxvspending + factordist_regulation + country + lhrw + niche, data = companies_analysis, Hess = TRUE)
+summary(olog2.4)
+ct24 <- coeftest(olog2.4, vcov = vcovCL(olog2.4, cluster= ~observation_id + party + policyarea))
+ct24
+
+
+## H4 + kontroll:
+olog2.5 <- clm(inf_factor ~ party_power3 + country + lhrw + niche, data = companies_analysis, Hess = TRUE)
+ct25 <- coeftest(olog2.5, vcov = vcovCL(olog2.5, cluster= ~observation_id + party + policyarea))
+ct25
+
+## H5 + kontroll:
+olog2.6 <- clm(inf_factor ~ partygoals + country + lhrw + niche, data = companies_analysis, Hess = TRUE)
+ct26 <- coeftest(olog2.6, vcov = vcovCL(olog2.6, cluster= ~observation_id + party + policyarea))
+ct26
+
+## H3 + H4 + H5 (+kontroll)
+olog2.7 <- clm(inf_factor ~ factordist_taxvspending + factordist_regulation + party_power3 + partygoals + country + lhrw + niche, data = companies_analysis, Hess = TRUE)
+ct27 <- coeftest(olog2.7, vcov = vcovCL(olog2.7, cluster= ~observation_id + party + policyarea))
+ct27
+
+
+
+my_coef_map2 <- c("factordist_taxvspendingVery proximate" = "[Taxation vs Spending] Very proximate preferences",
+                 "factordist_taxvspendingsomewhat proximate" = "[Taxation vs Spending] Somewhat proximate preferences",
+                 "factordist_taxvspendingnot proximate" = "[Taxation vs Spending] Not proximate preferences",
+                 "factordist_taxvspendingdont know/not applicable" = "[Taxation vs Spending] don't know/not applicable",
+                 "factordist_regulationVery proximate" = "[Regulation] Very proximite preferences",
+                 "factordist_regulationsomewhat proximate" = "[Regulation] Somewhat proximite preferences",
+                 "factordist_regulationnot proximate" = "[Regulation] Not proximite preferences",
+                 "factordist_regulationdont know/not applicable" = "[Regulation] Don't know/not applicable",
+          "party_power3" = "Party Power", 
+                 "partygoals" = "Compromise Willingness",
+                 "lhrw" = "Intra-Party Democracy",
+                 "niche" = "Party Nicheness",
+                 "0|1" = "Intercept 0|1",
+                 "1|2" = "Intercept 1|2",
+                 "2|3" = "Intercept 2|3")
+
+
+modelsummary(list(olog2.1, olog2.2, olog2.3, olog2.4, olog2.5, olog2.6, olog2.7), 
+             vcov = ~observation_id + party + policyarea, 
+             stars = T,
+             output = "OLOG_party1.html",
+             digits = 2,
+             coef_map = my_coef_map2)
+
+### tolkning: Litt ulike resultater. De fleste koeffisienter samme fortegn og st??rrelsesforhold. Men proximity_regulation er annerledes. + generelt litt lavere standardfeil over hele fj??la. Tror det er innafor ?? kalle det "similar results"
+
+
+
+
+
+```
+
+
+
+
+
+#### 5. CLMMs with same number of observations in all models
+
+```{r}
+
+
+
+#### Company characteristics:
+companies_analysis_without_na_comp <- companies_analysis %>% 
+  drop_na(inf_factor, factordist_taxvspending, factordist_regulation, policy_workers, talk, country, annualbudget, fulltimeworkers, partyimp2) 
+
+
+## hypotese 1: 
+snomod1.1 <- clmm(inf_factor ~ policy_workers + country + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis_without_na_comp)
+
+
+# hypotese 2:
+snomod1.2 <- clmm(inf_factor ~ talk + country + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis_without_na_comp)
+
+
+# H1 + kontroll:
+snomod1.3 <- clmm(inf_factor ~ policy_workers + country + fulltimeworkers + partyimp2 + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis_without_na_comp) 
+
+
+
+# H2 + kontroll:
+snomod1.4 <- clmm(inf_factor ~ talk + country + fulltimeworkers + partyimp2 + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis_without_na_comp)  
+
+# H1 + H2 + kontroll:
+snomod1.5 <- clmm(inf_factor ~ policy_workers + talk + country + fulltimeworkers + partyimp2 + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis_without_na_comp) 
+
+## pr??ver ?? ta med proximity p?? selskapssiden ogs??:
+##snomod1.6 <- clmm(inf_factor ~ factordist_taxvspending + factordist_regulation + policy_workers + talk + country + annualbudget + fulltimeworkers + partyimp2 + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis_without_na_comp)
+
+### regtab:
+htmlreg(list(snomod1.1, snomod1.2, snomod1.3, snomod1.4, snomod1.5),
+        digits=2, 
+        stars=c(0.01, 0.05, 0.1),
+        custom.coef.map = 
+          list("policy_workers1" = "Policy Workers", 
+                 "talk1" = "Access",
+                 "fulltimeworkers" = "Employees in Total",
+                 "partyimp2" = "Importance Attributed to Parties",
+                 "0|1" = "Intercept 0|1",
+                 "1|2" = "Intercept 1|2",
+                 "2|3" = "Intercept 2|3"),
+        caption.above=T,
+        caption = "Table 5.1: Cumulative logit mixed models with company variables",
+        custom.note = "%stars. Country fixed effects are included in all models",
+        file = "snomod_company1.html")
+
+        
+        
+        
+        
+
+
+
+
+
+#### party characteristics
+companies_analysis_without_na_party <- companies_analysis %>%
+  drop_na(inf_factor, factordist_taxvspending, factordist_regulation, party_power3, partygoals, country, lhrw, niche)
+
+
+
+## hypotese 3 
+snomod2.1 <- clmm(inf_factor ~ factordist_taxvspending + factordist_regulation + country + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis_without_na_party)
+
+
+## hypotese 4 
+snomod2.2 <- clmm(inf_factor ~ party_power3 + country + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis_without_na_party)
+
+
+## hypotese 5
+snomod2.3 <- clmm(inf_factor ~ partygoals + country + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis_without_na_party)
+
+## H 3-5 + kontroll:
+
+## H3 + kontroll:
+snomod2.4 <- clmm(inf_factor ~ factordist_taxvspending + factordist_regulation + country + lhrw + niche + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis_without_na_party)
+
+
+## H4 + kontroll:
+snomod2.5 <- clmm(inf_factor ~ party_power3 + country + lhrw + niche + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis_without_na_party)
+
+## H5 + kontroll:
+snomod2.6 <- clmm(inf_factor ~ partygoals + country + lhrw + niche + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis_without_na_party)
+
+## H3 + H4 + H5 (+kontroll)
+snomod2.7 <- clmm(inf_factor ~ factordist_taxvspending + factordist_regulation + party_power3 + partygoals + country + lhrw + niche + (1 | observation_id) + (1 | party) + (1 | policyarea), data = companies_analysis_without_na_party)
+
+
+htmlreg(list(snomod2.1, snomod2.2, snomod2.3, snomod2.4, snomod2.5, snomod2.6, snomod2.7), 
+        custom.coef.map = list("factordist_taxvspendingVery proximate" = "[Taxation vs Spending] Very proximate preferences",
+                 "factordist_taxvspendingsomewhat proximate" = "[Taxation vs Spending] Somewhat proximate preferences",
+                 "factordist_taxvspendingnot proximate" = "[Taxation vs Spending] Not proximate preferences",
+                 "factordist_taxvspendingdont know/not applicable" = "[Taxation vs Spending] don't know/not applicable",
+                 "factordist_regulationVery proximate" = "[Regulation] Very proximite preferences",
+                 "factordist_regulationsomewhat proximate" = "[Regulation] Somewhat proximite preferences",
+                 "factordist_regulationnot proximate" = "[Regulation] Not proximite preferences",
+                 "factordist_regulationdont know/not applicable" = "[Regulation] Don't know/not applicable",
+          "party_power3" = "Party Power", 
+                 "partygoals" = "Compromise Willingness",
+                 "lhrw" = "Intra-Party Democracy",
+                 "niche" = "Party Nicheness",
+                 "0|1" = "Intercept 0|1",
+                 "1|2" = "Intercept 1|2",
+                 "2|3" = "Intercept 2|3"),
+        caption.above=T,
+        caption = "Table 2. Cumulative logit mixed models with party characteristics as independent variables",
+        custom.note = "%stars. Country Fixed effects are included in all models",
+        file = "snomod_party1.html")
+
+        
+
+### kommentar/tolkning: Ser veldig likt ut, g??r an ?? kommentere p?? policy workers 
+
+```
+
+
+
+
+
+
+
+
+
+#### 6. CLMMs without UK respondents
+
+
+```{r}
+
+
+### subsetting out UK observations:
+df_analysis_withoutUK <- companies_analysis %>%
+  filter(country == "Norway" | country == "Denmark")
+  
+### Running models on subsetted dataset:
+
+## hypotese 1: 
+woukmod1.1 <- clmm(inf_factor ~ policy_workers + country + (1 | observation_id) + (1 | party) + (1 | policyarea), data = df_analysis_withoutUK)
+
+
+# hypotese 2:
+woukmod1.2 <- clmm(inf_factor ~ talk + country + (1 | observation_id) + (1 | party) + (1 | policyarea), data = df_analysis_withoutUK)
+
+
+# H1 + kontroll:
+woukmod1.3 <- clmm(inf_factor ~ policy_workers + country +  fulltimeworkers + partyimp2 + (1 | observation_id) + (1 | party) + (1 | policyarea),  data = df_analysis_withoutUK) 
+
+
+
+# H2 + kontroll:
+woukmod1.4 <- clmm(inf_factor ~ talk + country +  fulltimeworkers + partyimp2 + (1 | observation_id) + (1 | party) + (1 | policyarea), data = df_analysis_withoutUK)  
+
+# H1 + H2 + kontroll:
+woukmod1.5 <- clmm(inf_factor ~ policy_workers + talk + country  + fulltimeworkers + partyimp2 + (1 | observation_id) + (1 | party) + (1 | policyarea), data = df_analysis_withoutUK) 
+
+## pr??ver ?? ta med proximity p?? selskapssiden ogs??:
+##woukmod1.6 <- clmm(inf_factor ~ factordist_taxvspending + factordist_regulation + policy_workers + talk + country + annualbudget + fulltimeworkers + partyimp2 + (1 | observation_id) + (1 | party) + (1 | policyarea), data = df_analysis_withoutUK)
+
+
+### regtab:
+htmlreg(list(woukmod1.1, woukmod1.2, woukmod1.3, woukmod1.4, woukmod1.5), 
+        digits=2, 
+        stars=c(0.01, 0.05, 0.1),
+        custom.coef.map = list("policy_workers1" = "Policy Workers", 
+                 "talk1" = "Access",
+                 "fulltimeworkers" = "Employees in Total",
+                 "partyimp2" = "Importance Attributed to Parties",
+                 "0|1" = "Intercept 0|1",
+                 "1|2" = "Intercept 1|2",
+                 "2|3" = "Intercept 2|3"),
+        caption.above=T,
+        caption = "Table 5.1: Cumulative logit mixed models with company variables",
+        custom.note = "%stars. Country fixed effects are included in all models",
+        file = "wouk_company1.html")
+        
+
+### kommentar: identical results
+
+
+
+```
+
+
+```{r}
+### Party Characteristics:
+
+
+## hypotese 3 
+woukmod2.1 <- clmm(inf_factor ~ factordist_taxvspending + factordist_regulation + country + (1 | observation_id) + (1 | party) + (1 | policyarea), data = df_analysis_withoutUK)
+
+
+
+
+## hypotese 4 
+woukmod2.2 <- clmm(inf_factor ~ party_power3 + country + (1 | observation_id) + (1 | party) + (1 | policyarea), data = df_analysis_withoutUK)
+
+
+
+## hypotese 5
+woukmod2.3 <- clmm(inf_factor ~ partygoals + country + (1 | observation_id) + (1 | party) + (1 | policyarea), data = df_analysis_withoutUK)
+
+## H 3-5 + kontroll:
+
+## H3 + kontroll:
+woukmod2.4 <- clmm(inf_factor ~ factordist_taxvspending + factordist_regulation + country + lhrw + niche + (1 | observation_id) + (1 | party) + (1 | policyarea), data = df_analysis_withoutUK)
+
+
+## H4 + kontroll:
+woukmod2.5 <- clmm(inf_factor ~ party_power3 + country + lhrw + niche + (1 | observation_id) + (1 | party) + (1 | policyarea), data = df_analysis_withoutUK)
+
+## H5 + kontroll:
+woukmod2.6 <- clmm(inf_factor ~ partygoals + country + lhrw + niche + (1 | observation_id) + (1 | party) + (1 | policyarea), data = df_analysis_withoutUK)
+
+## H3 + H4 + H5 (+kontroll)
+woukmod2.7 <- clmm(inf_factor ~ factordist_taxvspending + factordist_regulation + party_power3 + partygoals + country + lhrw + niche + (1 | observation_id) + (1 | party) + (1 | policyarea), data = df_analysis_withoutUK)
+
+
+
+htmlreg(list(woukmod2.1, woukmod2.2, woukmod2.3, woukmod2.4, woukmod2.5, woukmod2.6, woukmod2.7),
+        digits=2, 
+        stars=c(0.01, 0.05, 0.1),
+        custom.coef.map = list("factordist_taxvspendingVery proximate" = "[Taxation vs Spending] Very proximate preferences",
+                 "factordist_taxvspendingsomewhat proximate" = "[Taxation vs Spending] Somewhat proximate preferences",
+                 "factordist_taxvspendingnot proximate" = "[Taxation vs Spending] Not proximate preferences",
+                 "factordist_taxvspendingdont know/not applicable" = "[Taxation vs Spending] don't know/not applicable",
+                 "factordist_regulationVery proximate" = "[Regulation] Very proximite preferences",
+                 "factordist_regulationsomewhat proximate" = "[Regulation] Somewhat proximite preferences",
+                 "factordist_regulationnot proximate" = "[Regulation] Not proximite preferences",
+                 "factordist_regulationdont know/not applicable" = "[Regulation] Don't know/not applicable",
+          "party_power3" = "Party Power", 
+                 "partygoals" = "Compromise Willingness",
+                 "lhrw" = "Intra-Party Democracy",
+                 "niche" = "Party Nicheness",
+                 "0|1" = "Intercept 0|1",
+                 "1|2" = "Intercept 1|2",
+                 "2|3" = "Intercept 2|3"),
+        caption.above=T,
+        caption = "Table 2. Cumulative logit mixed models with party characteristics as independent variables",
+        custom.note = "%stars. Country Fixed effects are included in all models",
+        file = "wouk_party1.html")
+
+        
+
+#### kommentar: Similar results, but somewhat weaker effect of party power and party goals. possible to dicuss! quite similar number of obs
+
+
+
+```
+
+

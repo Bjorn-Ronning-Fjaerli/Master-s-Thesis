@@ -1,0 +1,2005 @@
+---
+title: "MA data preparation"
+author: "Bj??rn R??nning Fj??rli"
+format: html
+editor: visual
+execute: 
+  echo: true
+  output: false
+---
+
+
+The data I use in my analysis is not mine to give away. I you wish to replicate my analysis, please contact Elin Haugsjerd Allern or Vibeke W??ien Hansen
+
+
+## loading packages and data
+
+```{r}
+rm(list = ls())
+
+library(tidyverse)
+library(dplyr)
+library(tidyr)
+
+companies <- read.csv("data/companies.csv")
+
+```
+
+### Removing irrelevant variables
+
+```{r}
+utendrit <- companies %>%
+  select(-ends_with("_DLF")) %>%
+  select(-ends_with("_EELV")) %>%
+  select(-ends_with("_FN")) %>%
+  select(-ends_with("_LR")) %>%
+  select(-ends_with("_Modem")) %>%
+  select(-ends_with("_PG")) %>%
+  select(-ends_with("_PCF")) %>%
+  select(-ends_with("_PRG")) %>%
+  select(-ends_with("_PS")) %>%
+  select(-ends_with("_UDI")) %>%
+  select(-ends_with("_AfD")) %>%
+  select(-ends_with("_Grunen")) %>%
+  select(-ends_with("_CDU")) %>%
+  select(-ends_with("_CSU")) %>%
+  select(-ends_with("_FDP")) %>%
+  select(-ends_with("_Linke")) %>%
+  select(-ends_with("_Piraten")) %>%
+  select(-ends_with("_SPD")) %>%
+  select(-ends_with("_50PLUS")) %>%
+  select(-ends_with("_CDA")) %>%
+  select(-ends_with("_CU")) %>%
+  select(-ends_with("_D66")) %>%
+  select(-ends_with("_GL")) %>%
+  select(-ends_with("_PvdA")) %>%
+  select(-ends_with("_PvdD")) %>%
+  select(-ends_with("_PVV")) %>%
+  select(-ends_with("_SGP")) %>%
+  select(-ends_with("_SP_NL")) %>%
+  select(-ends_with("_VVD")) %>%
+  select(-ends_with("_Dem")) %>%
+  select(-ends_with("_Rep"))
+
+## changing variable names to make the next steps easier
+utendrit <- utendrit %>%
+  rename_with(~ gsub("_v_dk$", "_vdk", .x), ends_with("_v_dk"))
+  
+utendrit <- utendrit %>% 
+  rename_with(~ gsub("_v_no$", "_vno", .x), ends_with("_v_no"))
+
+utendrit <- utendrit %>%
+  rename_with(~ gsub("_sp_no$", "_spno", .x), ends_with("_sp_no"))
+```
+
+# Restructuring to a triadic unit of observation
+
+I create the triadic structure by subsetting each variable that is measured dyadicly or triadicly at a time, and pivoting each new dataset to a long format. I then merge the datasets back together. 
+
+
+## Creating unique data frames for all variables messured triadicly and dyadicly:
+
+```{r}
+
+## step 1: pivot_longer
+dyader_mostactive <- utendrit %>%
+  pivot_longer(
+    cols = starts_with("mostactive_"),
+    names_to = "policyarea",
+    values_to = "mostactive",
+    names_prefix = "mostactive_"
+  )
+
+
+
+dyader_mostactive <- dyader_mostactive %>%
+  relocate(X, observation_id, policyarea, mostactive, country)
+
+
+### subsetting variables that are not measured triadicly or dyadicly  
+sub_stor_dyader_mostactive <- subset(dyader_mostactive, 
+                                select = c(X, observation_id, 
+                                           policyarea, 
+                                           mostactive,
+                                           gov_affairs_structured,
+                                           pinvited_special, 
+                                           cominvited_national,
+                                           cominvited_internal,
+                                           cominvited_special,
+                                           leadershipcontactscpo,
+                                           leadershipcontactspp,
+                                           formalinput_manifesto,
+                                           informalinput_manifesto,
+                                           input_partyleader,
+                                           input_candidates,
+                                           important_cpo,
+                                           important_pp,
+                                           important_legcommittees,
+                                           important_mps,
+                                           important_natpartyleaders,
+                                           important_ministries,
+                                           important_otherindpol,
+                                           important_officialsadmin,
+                                           important_comsowntype,
+                                           important_media,
+                                           important_profconsult,
+                                           partiesinspirechange,
+                                           pref_publicspending,
+                                           pref_regulation,
+                                           pref_tax,
+                                           directfinancial,
+                                           indirectfinancial,
+                                           offeringlabour,
+                                           offeringmaterial,
+                                           offeringpremises,
+                                           officialendorsement,
+                                           company_year,
+                                           joint_arrangements,
+                                           fulltimeworkers,
+                                           fulltime_policy,
+                                           fulltime_policy_dich,
+                                           annualbudget,
+                                           country,
+                                           language)
+)
+
+## subsetting variables for merging
+sub_dyader_mostactive <- subset(dyader_mostactive, 
+                                     select = c(X, observation_id, 
+                                                policyarea, 
+                                                mostactive,
+                                                country))
+
+### Creating merging variable  
+sub_dyader_mostactive <- sub_dyader_mostactive %>%
+  mutate("merge_cpol" = 
+           paste(X, observation_id, policyarea, country, sep = "_"))
+
+sub_stor_dyader_mostactive <- sub_stor_dyader_mostactive %>%
+  mutate("merge_cpol" = 
+           paste(X, observation_id, policyarea, country, sep = "_"))
+
+```
+
+#### triader_influence
+
+```{r}
+
+#### Dataframe number 2: triader_influence:
+
+
+## pivot_longer
+
+triader_influence <- utendrit %>%
+  pivot_longer(
+    cols = starts_with("inf_"),
+    names_to = c("party_policyarea"),
+    values_to = "influence"
+  )
+
+#table(dyadetest$party_policyarea)
+
+
+#### splitting "party_policy" 
+
+## removing "inf_" prefix:
+
+triader_influence <- triader_influence %>%
+  mutate(party_policyarea = 
+           str_remove_all(party_policyarea, "inf_"))
+
+## redusere til en understrek
+
+#triader_influence <- triader_influence %>%
+#  mutate(party_policyarea =
+#           str_replace_all(party_policyarea, "_no", ".no"))
+
+# triader_influence <- triader_influence %>%
+#  mutate(party_policyarea =
+#           str_replace_all(party_policyarea, "_dk", ".dk"))
+
+
+library(stringr)
+
+triader_influence <- triader_influence %>% 
+  separate(party_policyarea, c("policyarea", "party"), "_")
+
+
+triader_influence <- triader_influence %>%
+  relocate(X, observation_id, party, policyarea, country)
+
+### subsetting variables that are not measured dyadicly or triadicly  
+sub_stor_triader_influence <- subset(triader_influence, 
+                                select = 
+           c(X, observation_id, 
+             policyarea,
+             party,
+             influence,
+             gov_affairs_structured,
+             pinvited_special, 
+             cominvited_national,
+             cominvited_internal,
+             cominvited_special,
+             leadershipcontactscpo,
+             leadershipcontactspp,
+             formalinput_manifesto,
+             informalinput_manifesto,
+             input_partyleader,
+             input_candidates,
+             important_cpo,
+             important_pp,
+             important_legcommittees,
+             important_mps,
+             important_natpartyleaders,
+             important_ministries,
+             important_otherindpol,
+             important_officialsadmin,
+             important_comsowntype,
+             important_media,
+             important_profconsult,
+             partiesinspirechange,
+             pref_publicspending,
+             pref_regulation,
+             pref_tax,
+             directfinancial,
+             indirectfinancial,
+             offeringlabour,
+             offeringmaterial,
+             offeringpremises,
+             officialendorsement,
+             company_year,
+             joint_arrangements,
+             fulltimeworkers,
+             fulltime_policy,
+             fulltime_policy_dich,
+             annualbudget,
+             country,
+             language)
+)
+
+## subsetting variables for merging:
+
+sub_triader_influence <- subset(triader_influence, 
+                                     select = 
+                                       c(X, observation_id, 
+                                         policyarea,
+                                         party,
+                                         influence,
+                                         country))
+                                         
+
+## creating merging keys: 
+sub_triader_influence <- sub_triader_influence %>%
+  mutate("merge_cpol" = 
+           paste(X, observation_id, policyarea, country, sep = "_")) %>%
+  mutate("merge_cpa" = 
+           paste(X, observation_id, party, country, sep = "_")) %>%
+  mutate("merge_cpolpa" = 
+           paste(X, observation_id, policyarea, party, country, sep = "_"))
+
+
+sub_stor_triader_influence <- sub_stor_triader_influence %>%
+  mutate("merge_cpol" = 
+           paste(X, observation_id, policyarea, country, sep = "_")) %>%
+  mutate("merge_cpa" = 
+           paste(X, observation_id, party, country, sep = "_")) %>%
+  mutate("merge_cpolpa" = 
+           paste(X, observation_id, policyarea, party, country, sep = "_"))
+
+
+```
+
+### triader_ma_talk
+
+```{r}
+
+####### Datasett number three: triader_ma_talk: #######
+
+# I am terribly sorry about the obscenities below, I was probably quite frustrated with the data structure when performing this particular task. Feel free to change labels in your own script
+
+### Renaming variables to remove underscores:
+
+## AIDS = DONTKNOW
+## EBOLA = DONTTALK 
+
+triadeklar_ma <- utendrit %>%
+  rename_with(~gsub("^ma_(.*)_talk_dontknow$", "aidsmadontknow_\\1", .x), starts_with("ma_"), .cols = matches("_talk_dontknow"))
+ 
+triadeklar_ma <- triadeklar_ma %>%
+  rename_with(~gsub("^ma_(.*)_donttalk$", "ebolama_\\1", .x), starts_with("ma_"), .cols = matches("_donttalk"))
+
+### changing positions of underscores: 
+triadeklar_ma <- triadeklar_ma %>%
+  rename_with(~ gsub("^ma_", "ma-", .x), starts_with("ma_"))
+
+triadeklar_ma <- triadeklar_ma %>%
+  rename_with(~ gsub("_([^_]*)$", "\\1", .x), contains("_talk_"))
+
+### pivot longer:
+triader_ma_talk <- triadeklar_ma %>%
+  pivot_longer(
+    cols = starts_with("ma-"),
+    names_to = c("policyarea", "party"),
+    names_sep = "_",
+    values_to = "talk"
+  )
+
+## renaming policyareas og parties: 
+triader_ma_talk <- triader_ma_talk %>%
+  mutate(policyarea =
+           str_remove_all(policyarea, "ma-"))
+
+triader_ma_talk <- triader_ma_talk %>%
+  mutate(party = 
+           str_remove_all(party, "talk"))
+
+## relocating position of key variables: 
+
+triader_ma_talk <- triader_ma_talk %>%
+  relocate(X, observation_id, party, policyarea, country, talk)
+
+### subsetting only variables that are not messured triadicly or dyadicly  
+sub_stor_triader_matalk <- subset(triader_ma_talk, 
+                                select = c(X, observation_id, 
+                                           policyarea,
+                                           party,
+                                           talk,
+                                           gov_affairs_structured,
+                                           pinvited_special, 
+                                           cominvited_national,
+                                           cominvited_internal,
+                                           cominvited_special,
+                                           leadershipcontactscpo,
+                                           leadershipcontactspp,
+                                           formalinput_manifesto,
+                                           informalinput_manifesto,
+                                           input_partyleader,
+                                           input_candidates,
+                                           important_cpo,
+                                           important_pp,
+                                           important_legcommittees,
+                                           important_mps,
+                                           important_natpartyleaders,
+                                           important_ministries,
+                                           important_otherindpol,
+                                           important_officialsadmin,
+                                           important_comsowntype,
+                                           important_media,
+                                           important_profconsult,
+                                           partiesinspirechange,
+                                           pref_publicspending,
+                                           pref_regulation,
+                                           pref_tax,
+                                           directfinancial,
+                                           indirectfinancial,
+                                           offeringlabour,
+                                           offeringmaterial,
+                                           offeringpremises,
+                                           officialendorsement,
+                                           company_year,
+                                           joint_arrangements,
+                                           fulltimeworkers,
+                                           fulltime_policy,
+                                           fulltime_policy_dich,
+                                           annualbudget,
+                                           country,
+                                           language)
+)
+
+
+## Subsetting variables for merging:
+sub_triader_matalk <- subset(triader_ma_talk, 
+                                  select = c(X, observation_id, 
+                                             policyarea,
+                                             party,
+                                             talk,
+                                             country))
+
+## Creating merging keys:
+sub_triader_matalk <- sub_triader_matalk %>%
+  mutate("merge_cpol" = 
+           paste(X, observation_id, policyarea, country, sep = "_")) %>%
+  mutate("merge_cpa" = 
+           paste(X, observation_id, party, country, sep = "_")) %>%
+  mutate("merge_cpolpa" = 
+           paste(X, observation_id, policyarea, party, country, sep = "_"))
+
+sub_stor_triader_matalk <- sub_stor_triader_matalk %>%
+  mutate("merge_cpol" = 
+           paste(X, observation_id, policyarea, country, sep = "_")) %>%
+  mutate("merge_cpa" = 
+           paste(X, observation_id, party, country, sep = "_")) %>%
+  mutate("merge_cpolpa" = 
+           paste(X, observation_id, policyarea, party, country, sep = "_"))
+
+```
+
+### dyader_cominvited_nat
+
+```{r}
+
+###### datasett number four: dyader_cominvited_nat ###### 
+
+dyader_cominvited_nat <- utendrit %>%
+  pivot_longer(
+    cols = starts_with("cominvited_national_"),
+    names_to = "party",
+    values_to = "cominvited_nat"
+  )
+
+# relocating:
+dyader_cominvited_nat <- dyader_cominvited_nat %>%
+  relocate(X, observation_id, party, country, cominvited_nat)
+
+# changing variabel names:
+
+dyader_cominvited_nat <- dyader_cominvited_nat %>%
+  mutate(party = 
+           str_remove_all(party, "cominvited_national_"))
+
+### subsetting variables that are not measured dyadicly
+sub_stor_dyader_cominvited_nat <- subset(dyader_cominvited_nat, 
+                                select = c(X, observation_id, 
+                                           party,
+                                           cominvited_nat,
+                                           gov_affairs_structured,
+                                           pinvited_special, 
+                                           cominvited_national,
+                                           cominvited_internal,
+                                           cominvited_special,
+                                           leadershipcontactscpo,
+                                           leadershipcontactspp,
+                                           formalinput_manifesto,
+                                           informalinput_manifesto,
+                                           input_partyleader,
+                                           input_candidates,
+                                           important_cpo,
+                                           important_pp,
+                                           important_legcommittees,
+                                           important_mps,
+                                           important_natpartyleaders,
+                                           important_ministries,
+                                           important_otherindpol,
+                                           important_officialsadmin,
+                                           important_comsowntype,
+                                           important_media,
+                                           important_profconsult,
+                                           partiesinspirechange,
+                                           pref_publicspending,
+                                           pref_regulation,
+                                           pref_tax,
+                                           directfinancial,
+                                           indirectfinancial,
+                                           offeringlabour,
+                                           offeringmaterial,
+                                           offeringpremises,
+                                           officialendorsement,
+                                           company_year,
+                                           joint_arrangements,
+                                           fulltimeworkers,
+                                           fulltime_policy,
+                                           fulltime_policy_dich,
+                                           annualbudget,
+                                           country,
+                                           language)
+)
+
+## Variables for merging: 
+sub_dyader_cominvited_nat <- subset(dyader_cominvited_nat, 
+                                         select = c(X, observation_id, 
+                                                    party,
+                                                    cominvited_nat,
+                                                    country))
+
+## Merging keys: 
+sub_dyader_cominvited_nat <- sub_dyader_cominvited_nat %>%
+  mutate("merge_cpa" =
+           paste(X, observation_id, party, country, sep = "_"))
+
+sub_stor_dyader_cominvited_nat <- sub_stor_dyader_cominvited_nat %>%
+  mutate("merge_cpa" =
+           paste(X, observation_id, party, country, sep = "_"))
+
+```
+
+### dyader_cominvited_int and _spec
+
+```{r}
+#### datasett number five: dyader_cominvited_int #####
+
+dyader_cominvited_int <- utendrit %>%
+  pivot_longer(
+    cols = starts_with("cominvited_internal_"),
+    names_to = "party",
+    values_to = "cominvited_int"
+  )
+
+# relocating:
+dyader_cominvited_int <- dyader_cominvited_int %>%
+  relocate(X, observation_id, party, country, cominvited_int)
+
+
+# changing variable names:
+
+dyader_cominvited_int <- dyader_cominvited_int %>%
+  mutate(party = 
+           str_remove_all(party, "cominvited_internal_"))
+
+### subsetting variables for merging  
+sub_dyader_cominvited_int <- subset(dyader_cominvited_int, 
+                                    select = c(X, observation_id, 
+                                               party,
+                                               cominvited_int,
+                                               country)
+)
+
+## merging key: 
+sub_dyader_cominvited_int <- sub_dyader_cominvited_int %>%
+  mutate("merge_cpa" =
+           paste(X, observation_id, party, country, sep = "_"))
+
+
+#### datasett number six: dyader_cominvited_spec: ####
+
+dyader_cominvited_spec <- utendrit %>%
+  pivot_longer(
+    cols = starts_with("cominvited_special_"),
+    names_to = "party",
+    values_to = "cominvited_spec"
+  )
+
+# relocating:
+dyader_cominvited_spec <- dyader_cominvited_spec %>%
+  relocate(X, observation_id, party, country, cominvited_spec)
+
+# Changing labels
+
+dyader_cominvited_spec <- dyader_cominvited_spec %>%
+  mutate(party = 
+           str_remove_all(party, "cominvited_special_"))
+
+### subsetting variables for merging 
+sub_dyader_cominvited_spec <- subset(dyader_cominvited_spec, 
+                                    select = c(X, observation_id, 
+                                               party,
+                                               cominvited_spec,
+                                               country)
+)
+
+## merging key: 
+sub_dyader_cominvited_spec <- sub_dyader_cominvited_spec %>%
+  mutate("merge_cpa" =
+           paste(X, observation_id, party, country, sep = "_"))
+
+```
+
+### dyader_pinvited_spec
+
+```{r}
+#### dataset number seven: dyader_pinvited_spec: ####
+
+dyader_pinvited_spec <- utendrit %>%
+  pivot_longer(
+    cols = starts_with("pinvited_special_"),
+    names_to = "party",
+    values_to = "pinvited_spec"
+  )
+
+# relocating:
+dyader_pinvited_spec <- dyader_pinvited_spec %>%
+  relocate(X, observation_id, party, country, pinvited_spec)
+
+# changing variable label:
+
+dyader_pinvited_spec <- dyader_pinvited_spec %>%
+  mutate(party = 
+           str_remove_all(party, "pinvited_special_"))
+
+### subsetting variables for merging  
+sub_dyader_pinvited_spec <- subset(dyader_pinvited_spec, 
+                                    select = c(X, observation_id, 
+                                               party,
+                                               pinvited_spec,
+                                               country)
+)
+
+## merging key: 
+sub_dyader_pinvited_spec <- sub_dyader_pinvited_spec %>%
+  mutate("merge_cpa" =
+           paste(X, observation_id, party, country, sep = "_"))
+
+```
+
+### dyader_leadershipcontactspo og pp
+
+```{r}
+#### Number eight: dyader_leadershipcontpo: #####
+
+
+dyader_leaderscontpo <- utendrit %>%
+  pivot_longer(
+    cols = starts_with("leadershipcontactscpo_"),
+    names_to = "party",
+    values_to = "leaderscontpo"
+  )
+
+## relocating:
+
+dyader_leaderscontpo <- dyader_leaderscontpo %>%
+  relocate(X, observation_id, party, country, leaderscontpo)
+
+# changing variable name:
+
+dyader_leaderscontpo <- dyader_leaderscontpo %>%
+  mutate(party = 
+           str_remove_all(party, "leadershipcontactscpo_"))
+
+### subsetting variables for merging:  
+sub_dyader_leaderscontpo <- subset(dyader_leaderscontpo, 
+                                    select = c(X, observation_id, 
+                                               party,
+                                               leaderscontpo,
+                                               country)
+)
+
+## merging key: 
+sub_dyader_leaderscontpo <- sub_dyader_leaderscontpo %>%
+  mutate("merge_cpa" =
+           paste(X, observation_id, party, country, sep = "_"))
+
+#### number nine: dyader_leadershipcontactspp #####
+
+dyader_leaderscontpp <- utendrit %>%
+  pivot_longer(
+    cols = starts_with("leadershipcontactspp_"),
+    names_to = "party",
+    values_to = "leaderscontpp"
+  )
+
+## relocating:
+
+dyader_leaderscontpp <- dyader_leaderscontpp%>%
+  relocate(X, observation_id, party, country, leaderscontpp)
+
+# changing text values in party variable:
+
+dyader_leaderscontpp <- dyader_leaderscontpp %>%
+  mutate(party = 
+           str_remove_all(party, "leadershipcontactspp_"))
+
+### subsetting variables for merging: 
+sub_dyader_leaderscontpp <- subset(dyader_leaderscontpp, 
+                                    select = c(X, observation_id, 
+                                               party,
+                                               leaderscontpp,
+                                              country)
+)
+
+## merging key: 
+sub_dyader_leaderscontpp <- sub_dyader_leaderscontpp %>%
+  mutate("merge_cpa" =
+           paste(X, observation_id, party, country, sep = "_"))
+
+```
+
+### dyader_input-variablene:
+
+```{r}
+#### nummer 10: dyader_formalinput_manifesto #### 
+
+dyader_formalinput <- utendrit %>%
+  pivot_longer(
+    cols = starts_with("formalinput_manifesto_"),
+    names_to = "party",
+    values_to = "formalinput_manif"
+  )
+
+## relocating:
+
+dyader_formalinput <- dyader_formalinput %>%
+  relocate(X, observation_id, party, country, formalinput_manif)
+
+## changing text values in party variable:
+
+dyader_formalinput <-dyader_formalinput %>% 
+  mutate(party = 
+           str_remove_all(party, "formalinput_manifesto_"))
+
+### subsetting variables for merging: 
+sub_dyader_formalinput <- subset(dyader_formalinput, 
+                                    select = c(X, observation_id, 
+                                               party,
+                                               formalinput_manif,
+                                               country)
+)
+
+## merging key: 
+sub_dyader_formalinput <- sub_dyader_formalinput %>%
+  mutate("merge_cpa" =
+           paste(X, observation_id, party, country, sep = "_"))
+
+#### number 11: dyader_informalinput ####
+
+dyader_informalinput <- utendrit %>%
+  pivot_longer(
+    cols = starts_with("informalinput_manifesto_"),
+    names_to = "party",
+    values_to = "informalinput_manif"
+  )
+
+## relocating:
+
+dyader_informalinput <- dyader_informalinput %>%
+  relocate(X, observation_id, party, country, informalinput_manif)
+
+## changing text values in party variable:
+
+dyader_informalinput <-dyader_informalinput %>% 
+  mutate(party = 
+           str_remove_all(party, "informalinput_manifesto_"))
+
+### subsetting variables for merging:  
+sub_dyader_informalinput <- subset(dyader_informalinput, 
+                                    select = c(X, observation_id, 
+                                               party,
+                                               informalinput_manif,
+                                               country)
+)
+
+## merging key: 
+sub_dyader_informalinput <- sub_dyader_informalinput %>%
+  mutate("merge_cpa" =
+           paste(X, observation_id, party, country, sep = "_"))
+
+#### nummer 12: dyader_inputleader ####
+
+dyader_inputleader <- utendrit %>%
+  pivot_longer(
+    cols = starts_with("input_partyleader_"),
+    names_to = "party",
+    values_to = "inputleader"
+  )
+
+## relocating:
+
+dyader_inputleader <- dyader_inputleader %>%
+  relocate(X, observation_id, party, country, inputleader)
+
+## changing text values in party variable:
+
+dyader_inputleader <-dyader_inputleader %>% 
+  mutate(party = 
+           str_remove_all(party, "input_partyleader_"))
+
+### subsetting variables for merging 
+sub_dyader_inputleader <- subset(dyader_inputleader, 
+                                    select = c(X, observation_id, 
+                                               party,
+                                               inputleader,
+                                               country)
+)
+
+## merging key: 
+sub_dyader_inputleader <- sub_dyader_inputleader %>%
+  mutate("merge_cpa" =
+           paste(X, observation_id, party, country, sep = "_"))
+
+
+#### nummer 13: dyader_inputcandidates #### NB! Lots of missing!
+
+
+dyader_inputcandidates <- utendrit %>%
+  pivot_longer(
+    cols = starts_with("input_candidates_"),
+    names_to = "party",
+    values_to = "inputcandidates"
+  )
+
+## relocating:
+
+dyader_inputcandidates <- dyader_inputcandidates %>%
+  relocate(X, observation_id, party, country, inputcandidates)
+
+## changing text values of party variables:
+
+dyader_inputcandidates <-dyader_inputcandidates %>% 
+  mutate(party = 
+           str_remove_all(party, "input_candidates_"))
+
+### subsetting variables for merging:  
+sub_dyader_inputcandidates <- subset(dyader_inputcandidates, 
+                                    select = c(X, observation_id, 
+                                               party,
+                                               inputcandidates,
+                                               country)
+)
+
+## merging key: 
+sub_dyader_inputcandidates <- sub_dyader_inputcandidates %>%
+  mutate("merge_cpa" =
+           paste(X, observation_id, party, country, sep = "_"))
+
+```
+
+### orgconnect og collab
+
+```{r}
+#### number 14: dyader_orgconnect ####
+
+dyader_orgconnect <- utendrit %>%
+  pivot_longer(
+    cols = starts_with("orgconnect_"),
+    names_to = "party",
+    values_to = "orgconnect"
+  )
+
+## relocating:
+
+dyader_orgconnect <- dyader_orgconnect %>%
+  relocate(X, observation_id, party, country, orgconnect)
+
+## changing text values of party variable:
+
+dyader_orgconnect <- dyader_orgconnect %>% 
+  mutate(party = 
+           str_remove_all(party, "orgconnect_"))
+
+### subsetting variables for merging  
+sub_dyader_orgconnect <- subset(dyader_orgconnect, 
+                                    select = c(X, observation_id, 
+                                               party,
+                                               orgconnect,
+                                               country)
+)
+
+## merging key: 
+sub_dyader_orgconnect <- sub_dyader_orgconnect %>%
+  mutate("merge_cpa" =
+           paste(X, observation_id, party, country, sep = "_"))
+
+#### Number 15: dyader_collab ####
+
+dyader_collab <- utendrit %>%
+  pivot_longer(
+    cols = starts_with("collab_"),
+    names_to = "party",
+    values_to = "collab"
+  )
+
+## relocating:
+
+dyader_collab <- dyader_collab %>%
+  relocate(X, observation_id, party, country, collab)
+
+## changing text values on party variable:
+
+dyader_collab <-dyader_collab %>% 
+  mutate(party = 
+           str_remove_all(party, "collab_"))
+
+### subsetting variables for merging 
+sub_dyader_collab <- subset(dyader_collab, 
+                                    select = c(X, observation_id, 
+                                               party,
+                                               collab,
+                                               country)
+)
+
+## merging key: 
+sub_dyader_collab <- sub_dyader_collab %>%
+  mutate("merge_cpa" =
+           paste(X, observation_id, party, country, sep = "_"))
+
+```
+
+### dyader_inspiredchange
+
+```{r}
+
+#### nummer 16: dyader_inspiredchange ####
+
+dyader_inspiredchange <- utendrit %>%
+  pivot_longer(
+    cols = starts_with("inspirechange_"),
+    names_to = "party",
+    values_to = "inspiredchange"
+  )
+
+## relocating:
+
+dyader_inspiredchange <- dyader_inspiredchange %>%
+  relocate(X, observation_id, party, country, inspiredchange)
+
+## changing text values on party variable:
+
+dyader_inspiredchange <-dyader_inspiredchange %>% 
+  mutate(party = 
+           str_remove_all(party, "inspirechange_"))
+
+### subsetting variables for merging  
+sub_dyader_inspiredchange <- subset(dyader_inspiredchange, 
+                                    select = c(X, observation_id, 
+                                               party,
+                                               inspiredchange,
+                                               country)
+)
+
+## merging key: 
+sub_dyader_inspiredchange <- sub_dyader_inspiredchange %>%
+  mutate("merge_cpa" =
+           paste(X, observation_id, party, country, sep = "_"))
+
+```
+
+### dyader - company contributions-variablene
+
+```{r}
+#### number 17: dyader_directfin ####
+
+dyader_directfin <- utendrit %>%
+  pivot_longer(
+    cols = starts_with("directfin_"),
+    names_to = "party",
+    values_to = "directfin"
+  )
+
+## relocating:
+
+dyader_directfin <- dyader_directfin %>%
+  relocate(X, observation_id, party, country, directfin)
+
+## changing text values on party variable: 
+
+dyader_directfin <- dyader_directfin %>%
+  mutate(party =
+    str_remove_all(party, "directfin_")
+  )
+
+### subsetting variables for merging:  
+sub_dyader_directfin <- subset(dyader_directfin, 
+                                    select = c(X, observation_id, 
+                                               party,
+                                               directfin,
+                                               country)
+)
+
+
+
+## merging key: 
+sub_dyader_directfin <- sub_dyader_directfin %>%
+  mutate("merge_cpa" =
+           paste(X, observation_id, party, country, sep = "_"))
+
+
+#### number 18: dyader_indirectfin ####
+
+dyader_indirectfin <- utendrit %>%
+  pivot_longer(
+    cols = starts_with("indirectfin_"),
+    names_to = "party",
+    values_to = "indirectfin"
+  )
+
+## relocating:
+
+dyader_indirectfin <- dyader_indirectfin %>%
+  relocate(X, observation_id, party, country, indirectfin)
+
+## changing text values on party variable: 
+
+dyader_indirectfin <- dyader_indirectfin %>%
+  mutate(party =
+           str_remove_all(party, "indirectfin_")
+  )
+
+### subsetting variables for merging 
+sub_dyader_indirectfin <- subset(dyader_indirectfin, 
+                                    select = c(X, observation_id, 
+                                               party,
+                                               indirectfin,
+                                               country)
+)
+
+
+## merging key:
+sub_dyader_indirectfin <- sub_dyader_indirectfin %>%
+  mutate("merge_cpa" =
+           paste(X, observation_id, party, country, sep = "_"))
+
+
+#### nummer 19: dyader_offlabour #### NB! Lots of MISSING
+
+dyader_offlabour <- utendrit %>%
+  pivot_longer(
+    cols = starts_with("offlabour_"),
+    names_to = "party",
+    values_to = "offlabour"
+  )
+
+## relocating:
+
+dyader_offlabour <- dyader_offlabour %>%
+  relocate(X, observation_id, party, country, offlabour)
+
+## changing text values on party variable: 
+
+dyader_offlabour <- dyader_offlabour %>%
+  mutate(party =
+           str_remove_all(party, "offlabour_")
+  )
+
+### subsetting variables for merging:  
+sub_dyader_offlabour <- subset(dyader_offlabour, 
+                                    select = c(X, observation_id, 
+                                               party,
+                                               offlabour,
+                                               country)
+)
+
+
+## merging key: 
+sub_dyader_offlabour <- sub_dyader_offlabour %>%
+  mutate("merge_cpa" =
+           paste(X, observation_id, party, country, sep = "_"))
+
+
+#### nummer 20: dyader_offmaterial ####   NB! UTELUKKENDE MISSINGVERIDER!
+
+
+dyader_offmaterial <- utendrit %>%
+  pivot_longer(
+    cols = starts_with("offmaterial_"),
+    names_to = "party",
+    values_to = "offmaterial"
+  )
+
+## Relocating:
+
+dyader_offmaterial <- dyader_offmaterial %>%
+  relocate(X, observation_id, party, country, offmaterial)
+
+## Changing text values on party variable: 
+
+dyader_offmaterial <- dyader_offmaterial %>%
+  mutate(party =
+           str_remove_all(party, "offmaterial_")
+  )
+
+### subsetting variables for merging: 
+sub_dyader_offmaterial <- subset(dyader_offmaterial, 
+                                    select = c(X, observation_id, 
+                                               party,
+                                               offmaterial,
+                                               country)
+)
+
+
+## merging key: 
+sub_dyader_offmaterial <- sub_dyader_offmaterial %>%
+  mutate("merge_cpa" =
+           paste(X, observation_id, party, country, sep = "_"))
+
+
+#### nummer 21: dyader_offpremises ####
+
+dyader_offpremises <- utendrit %>%
+  pivot_longer(
+    cols = starts_with("offpremises_"),
+    names_to = "party",
+    values_to = "offpremises"
+  )
+
+## relocating:
+
+dyader_offpremises <- dyader_offpremises %>%
+  relocate(X, observation_id, party, country, offpremises)
+
+## changing text values for party variable: 
+
+dyader_offpremises <- dyader_offpremises %>%
+  mutate(party =
+           str_remove_all(party, "offpremises_")
+  )
+
+### subsetting variables for merging  
+sub_dyader_offpremises <- subset(dyader_offpremises, 
+                                    select = c(X, observation_id, 
+                                               party,
+                                               offpremises,
+                                               country)
+)
+
+
+## merging key: 
+sub_dyader_offpremises <- sub_dyader_offpremises %>%
+  mutate("merge_cpa" =
+           paste(X, observation_id, party, country, sep = "_"))
+
+
+#### nummer 22: dyader_offendorse ####  NB: lots of MISSING 
+
+dyader_offendorse <- utendrit %>%
+  pivot_longer(
+    cols = starts_with("offendorse_"),
+    names_to = "party",
+    values_to = "offendorse"  
+  )
+
+## Relocating:
+
+dyader_offendorse <- dyader_offendorse %>%
+  relocate(X, observation_id, party, country, offendorse)
+
+## changing text values of party variable: 
+
+dyader_offendorse <- dyader_offendorse %>%
+  mutate(party =
+           str_remove_all(party, "offendorse_")
+  )
+
+### subsetting variables for merging
+sub_dyader_offendorse <- subset(dyader_offendorse, 
+                                    select = c(X, observation_id, 
+                                               party,
+                                               offendorse,
+                                               country)
+)
+
+
+
+## merging key: 
+sub_dyader_offendorse <- sub_dyader_offendorse %>%
+  mutate("merge_cpa" =
+           paste(X, observation_id, party, country, sep = "_"))
+
+```
+
+## Merging all dyadic and triadic datasets to one dataset ready for analysis:
+
+```{r}
+#######   MERGING  #######
+
+final_dat <- sub_stor_triader_influence %>%
+  left_join(sub_triader_matalk, 
+            by = c("X",
+                   "observation_id",
+                   "country",
+                   "policyarea",
+                   "party",
+                   "merge_cpol",
+                   "merge_cpa",
+                   "merge_cpolpa"
+                   )
+  )
+
+## adding mostactive
+
+final_dat <- final_dat %>%
+  left_join(sub_dyader_mostactive, 
+            by = c("X",
+                   "observation_id",
+                   "country",
+                   "policyarea",
+                   "merge_cpol"
+            )
+  )
+
+## adding collab 
+final_dat <- final_dat %>%
+  left_join(sub_dyader_collab, 
+            by = c("X",
+                   "observation_id",
+                   "country",
+                   "party",
+                   "merge_cpa"
+            )
+  )
+
+## adding cominvited_int 
+final_dat <- final_dat %>%
+  left_join(sub_dyader_cominvited_int, 
+            by = c("X",
+                   "observation_id",
+                   "country",
+                   "party",
+                   "merge_cpa"
+            )
+  )
+
+## adding cominvited_nat 
+final_dat <- final_dat %>%
+  left_join(sub_dyader_cominvited_nat, 
+            by = c("X",
+                   "observation_id",
+                   "country",
+                   "party",
+                   "merge_cpa"
+            )
+  )
+
+## adding cominvited_spec 
+final_dat <- final_dat %>%
+  left_join(sub_dyader_cominvited_spec, 
+            by = c("X",
+                   "observation_id",
+                   "country",
+                   "party",
+                   "merge_cpa"
+            )
+  )
+
+## adding directfin 
+final_dat <- final_dat %>%
+  left_join(sub_dyader_directfin, 
+            by = c("X",
+                   "observation_id",
+                   "country",
+                   "party",
+                   "merge_cpa"
+            )
+  )
+
+## adding formalinput 
+final_dat <- final_dat %>%
+  left_join(sub_dyader_formalinput, 
+            by = c("X",
+                   "observation_id",
+                   "country",
+                   "party",
+                   "merge_cpa"
+            )
+  )
+
+## adding indirectfin 
+final_dat <- final_dat %>%
+  left_join(sub_dyader_indirectfin, 
+            by = c("X",
+                   "observation_id",
+                   "country",
+                   "party",
+                   "merge_cpa"
+            )
+  )
+
+## adding informalinput 
+final_dat <- final_dat %>%
+  left_join(sub_dyader_informalinput, 
+            by = c("X",
+                   "observation_id",
+                   "country",
+                   "party",
+                   "merge_cpa"
+            )
+  )
+
+## adding inputcandidates 
+final_dat <- final_dat %>%
+  left_join(sub_dyader_inputcandidates, 
+            by = c("X",
+                   "observation_id",
+                   "country",
+                   "party",
+                   "merge_cpa"
+            )
+  )
+
+## adding inputleader 
+final_dat <- final_dat %>%
+  left_join(sub_dyader_inputleader, 
+            by = c("X",
+                   "observation_id",
+                   "country",
+                   "party",
+                   "merge_cpa"
+            )
+  )
+
+## adding inspiredchange 
+final_dat <- final_dat %>%
+  left_join(sub_dyader_inspiredchange, 
+            by = c("X",
+                   "observation_id",
+                   "country",
+                   "party",
+                   "merge_cpa"
+            )
+  )
+
+## adding leaderscontpo 
+final_dat <- final_dat %>%
+  left_join(sub_dyader_leaderscontpo, 
+            by = c("X",
+                   "observation_id",
+                   "country",
+                   "party",
+                   "merge_cpa"
+            )
+  )
+
+## adding leaderscontpp 
+final_dat <- final_dat %>%
+  left_join(sub_dyader_leaderscontpp, 
+            by = c("X",
+                   "observation_id",
+                   "country",
+                   "party",
+                   "merge_cpa"
+            )
+  )
+
+## adding offendorse 
+final_dat <- final_dat %>%
+  left_join(sub_dyader_offendorse, 
+            by = c("X",
+                   "observation_id",
+                   "country",
+                   "party",
+                   "merge_cpa"
+            )
+  )
+
+## adding offlabour 
+final_dat <- final_dat %>%
+  left_join(sub_dyader_offlabour, 
+            by = c("X",
+                   "observation_id",
+                   "country",
+                   "party",
+                   "merge_cpa"
+            )
+  )
+
+## adding offmaterial 
+final_dat <- final_dat %>%
+  left_join(sub_dyader_offmaterial, 
+            by = c("X",
+                   "observation_id",
+                   "country",
+                   "party",
+                   "merge_cpa"
+            )
+  )
+
+## adding offpresmises 
+final_dat <- final_dat %>%
+  left_join(sub_dyader_offpremises, 
+            by = c("X",
+                   "observation_id",
+                   "country",
+                   "party",
+                   "merge_cpa"
+            )
+  )
+
+## adding orgconnect 
+final_dat <- final_dat %>%
+  left_join(sub_dyader_orgconnect, 
+            by = c("X",
+                   "observation_id",
+                   "country",
+                   "party",
+                   "merge_cpa"
+            )
+  )
+
+## adding pinvited 
+final_dat <- final_dat %>%
+  left_join(sub_dyader_pinvited_spec, 
+            by = c("X",
+                   "observation_id",
+                   "country",
+                   "party",
+                   "merge_cpa"
+            )
+  )
+
+```
+
+## Removing observations that are theoretically nonsensical:
+
+```{r}
+### Fjerner observasjoner som ikke gir teoretisk mening! 
+
+
+## Removing policyarea observations in which no companies have indicated to be active 
+final_dat1 <- final_dat %>%
+  filter(mostactive == 1)
+
+##table(final_dat1$policyarea)
+
+
+## Removing nonsensical country-party combinations 
+final_dat1 <- final_dat1 %>%
+  mutate(party_country =
+           case_when(country == "Denmark" & party == "df" ~ "Denmark",
+                     country == "Denmark" & party == "kf" ~ "Denmark",
+                     country == "Denmark" & party == "rv" ~ "Denmark",
+                     country == "Denmark" & party == "el" ~ "Denmark",
+                     country == "Denmark" & party == "la" ~ "Denmark",
+                     country == "Denmark" & party == "sf" ~ "Denmark",
+                     country == "Denmark" & party == "sd" ~ "Denmark",
+                     country == "Denmark" & party == "vdk" ~ "Denmark",
+                     country == "Norway" & party == "ap" ~ "Norway",
+                   country == "Norway" & party == "frp" ~ "Norway",
+                   country == "Norway" & party == "h" ~ "Norway",
+                   country == "Norway" & party == "krf" ~ "Norway",
+                   country == "Norway" & party == "mdg" ~ "Norway",
+                   country == "Norway" & party == "spno" ~ "Norway",
+                   country == "Norway" & party == "sv" ~ "Norway",
+                   country == "Norway" & party == "vno" ~ "Norway",
+                   country == "UK" & party == "cons" ~ "UK",
+                   country == "UK" & party == "green" ~ "UK",
+                   country == "UK" & party == "lab" ~ "UK",
+                   country == "UK" & party == "libdem" ~ "UK",
+                   country == "UK" & party == "plaid" ~ "UK",
+                   country == "UK" & party == "snp" ~ "UK",
+                   country == "UK" & party == "ukip" ~ "UK")
+         )
+#table(final_dat1$party_country, final_dat1$country, useNA = "always")
+
+#table(final_dat1$country)
+
+final_dat2 <- final_dat1 %>%
+  filter(country == party_country)
+
+#table(final_dat2$country, final_dat2$party_country)
+```
+
+
+# Adding party variables
+
+
+
+### constructing proximity of policy preferences variable, using variables from CHES14
+
+```{r}
+
+## Loading data:
+
+CHES14 <- read.csv("data/2014_CHES_dataset_means.csv")
+
+## Subsetting relevant observations and variables
+CHES <- filter( CHES14, country == 2 | country == 11 | country == 35)
+         
+CHES <- CHES %>%
+  select(party_id,
+         party_name,
+         country,
+         lrgen,
+         lrgen_sd,
+         lrecon,
+         lrecon_salience,
+         lrecon_sd,
+         spendvtax,
+         deregulation,
+         redistribution,
+         econ_interven) 
+
+#table(final_dat$party) ## brukte denne til ?? sjekke at partiavn stemte overens
+
+## changing party names to correspond to PAIRDEM data
+CHES <- CHES %>%
+  mutate(party = 
+           case_when(party_name == "SD" ~ "sd",
+                     party_name == "RV" ~ "rv",
+                     party_name == "KF" ~ "kf",
+                     party_name == "SF" ~ "sf",
+                     party_name == "V" & country == 2 ~ "vdk",
+                     party_name == "EL" ~ "el",
+                     party_name == "DF" ~ "df",
+                     party_name == "FolkB" ~ "folkb",
+                     party_name == "LA" ~ "la",
+                     party_name == "CONS" ~ "cons",
+                     party_name == "LAB" ~ "lab",
+                     party_name == "LIBDEM" ~ "libdem",
+                     party_name == "SNP" ~ "snp",
+                     party_name == "PLAID" ~ "plaid",
+                     party_name == "GREEN" ~ "green",
+                     party_name == "UKIP" ~ "ukip",
+                     party_name == "AP" ~ "ap",
+                     party_name == "FrP" ~ "frp",
+                     party_name == "H" ~ "h",
+                     party_name == "SV" ~ "sv",
+                     party_name == "Sp" ~ "spno",
+                     party_name == "KrF" ~ "krf",
+                     party_name == "V" & country == 35 ~ "vno",
+                     party_name == "MDG" ~ "mdg"
+                     )
+  )
+
+```
+
+
+
+#### Constructing proximity variable
+
+```{r}
+## step 1: Treatment of missing values in PAIRDEM data
+
+# pref_tax:
+final_dat2 <- final_dat2 %>%
+  mutate(pref_tax_recoded =
+           ifelse(pref_tax == 6666 | pref_tax == 8888, NA, pref_tax))
+ 
+# pref_publicspending:
+final_dat2 <- final_dat2 %>%
+  mutate(pref_publicspending_recoded =
+           ifelse(pref_publicspending == 6666 | pref_publicspending == 8888, NA, pref_publicspending))
+
+# pref_regulation:
+final_dat2 <- final_dat2 %>%
+  mutate(pref_regulation_recoded =
+           ifelse(pref_regulation == 6666 | pref_regulation == 8888, NA, pref_regulation))
+
+
+## steg 2: converting PAIRDEM values to a CHES-ish sacale (0-10)
+
+#pref_tax:
+final_dat2 <- final_dat2 %>%
+  mutate(pref_tax_chesish =
+           case_when(pref_tax_recoded == 0 ~ 7.5,
+                     pref_tax_recoded == 1 ~ 5,
+                     pref_tax_recoded == 2 ~ 2.5))
+
+#pref_publicspending:
+final_dat2 <- final_dat2 %>%
+  mutate(pref_spending_chesish =
+           case_when(pref_publicspending_recoded == 0 ~ 7.5,
+                     pref_publicspending_recoded == 1 ~ 5,
+                     pref_publicspending_recoded == 2 ~ 2.5))
+
+#pref_regulation:
+final_dat2 <- final_dat2 %>%
+  mutate(pref_regulation_chesish =
+           case_when(pref_regulation_recoded == 0 ~ 7.5,
+                     pref_regulation_recoded == 1 ~ 5,
+                     pref_regulation_recoded == 2 ~ 2.5))
+
+
+### combining taxation and regulation dimension:
+
+ 
+final_dat2 <- final_dat2 %>%
+  mutate(pref_taxvspending =
+           case_when(
+          is.na(pref_tax_chesish) == FALSE & 
+          is.na(pref_spending_chesish) == FALSE ~
+        ((pref_tax_chesish + pref_spending_chesish)/2),
+        is.na(pref_tax_chesish) == FALSE & 
+          pref_spending_chesish == TRUE ~
+          pref_tax_chesish,
+        is.na(pref_tax_chesish) == TRUE & 
+        is.na(pref_spending_chesish) == FALSE ~ pref_spending_chesish
+                   ))
+
+table(final_dat2$pref_taxvspending)
+
+## Adding CHES variables to main df:
+
+CHES2 <- CHES %>%
+  select(party_id,
+         party,
+         spendvtax,
+         deregulation
+         )
+
+final_dat2 <- final_dat2 %>%
+  left_join(CHES2,
+            by = "party")
+
+### Constructing distance measure:
+final_dat2 <- final_dat2 %>%
+  mutate(
+    policydistance_taxvspending = abs(pref_taxvspending - spendvtax))
+  
+final_dat2 <- final_dat2 %>%
+  mutate(
+    policydistance_regulation =
+      abs(pref_regulation_chesish - deregulation)
+  )
+
+
+
+
+
+
+```
+
+
+
+## Adding variables from parlgov and cosntructing party power variable
+
+### Adding parlgov variables
+
+```{r}
+
+## Loading data
+parlgov <- read.csv("data/view_cabinet.csv")
+
+## subsetting Norway, Denmark, UK:
+parlgov1 <- filter(parlgov, country_name_short == "DNK" |
+         country_name_short == "NOR" |
+         country_name_short == "GBR")
+
+## subsetting relevant years 
+parlgov1 <- parlgov1 %>%
+  mutate(election_year =
+           substr(election_date, 1, 4))
+
+parlgov1 <- parlgov1 %>%
+  filter(election_year >= 2005 & election_year <= 2018)
+
+## subsetting relevant variables
+parlgov1 <- parlgov1 %>%
+  select(country_name,
+         election_date,
+         election_year,
+         cabinet_party,
+         prime_minister,
+         seats,
+         election_seats_total,
+         party_name_short,
+         party_name,
+         party_id)
+
+## fjerner ekstraobservasjoner som f??lge av regjeringsskifter innad i valgsykluser:
+parlgov1 <- parlgov1 %>%
+  distinct(party_name, election_date, .keep_all = TRUE)
+
+## lager seteandel-variabel:
+parlgov1 <- parlgov1 %>%
+  mutate(seat_share = 
+           seats/election_seats_total)
+
+## lager gjennomsnittlig seteandelvariabel 
+avg_seat_share <- aggregate(seat_share ~ party_id, data = parlgov1, FUN = mean)
+
+names(avg_seat_share)[which(names(avg_seat_share) == "seat_share")] <- "avg_seat_share"
+
+parlgov1 <- parlgov1 %>%
+  left_join(avg_seat_share,
+            by = "party_id")
+
+## lager gjennomsnittlig govtsatusvariabel:
+avg_govt_status <- aggregate(cabinet_party ~ party_id, data = parlgov1, FUN = mean)
+
+names(avg_govt_status)[which(names(avg_govt_status) == "cabinet_party")] <- "avg_govt_status"
+
+parlgov1 <- parlgov1 %>%
+  left_join(avg_govt_status,
+            by = "party_id")
+
+
+## koder om partinavn til ?? matche final_dat: 
+
+parlgov1 <- parlgov1 %>%
+  mutate(party = 
+           case_when(party_name_short == "Sd" ~ "sd",
+                     party_name_short == "RV" ~ "rv",
+                     party_name_short == "KF" ~ "kf",
+                     party_name_short == "SF" ~ "sf",
+                     party_name_short == "V" & country_name == "Denmark" ~ "vdk",
+                     party_name_short == "En-O" ~ "el",
+                     party_name_short == "DF" ~ "df",
+                     party_name_short == "NLA" ~ "la",
+                     party_name_short == "Con" ~ "cons",
+                     party_name_short == "Lab" ~ "lab",
+                     party_name_short == "Lib" ~ "libdem",
+                     party_name_short == "SNP" ~ "snp",
+                     party_name_short == "Plaid" ~ "plaid",
+                     party_name_short == "GP" ~ "green",
+                     party_name_short == "UKIP" ~ "ukip",
+                     party_name_short == "DNA" ~ "ap",
+                     party_name_short == "Fr" ~ "frp",
+                     party_name_short == "H" ~ "h",
+                     party_name_short == "SV" ~ "sv",
+                     party_name_short == "Sp" ~ "spno",
+                     party_name_short == "KrF" ~ "krf",
+                     party_name_short == "V" & country_name == "Norway" ~ "vno",
+                     party_name_short == "MDG" ~ "mdg"
+                     )
+  )
+
+
+```
+
+## Constructing party power variable:
+
+
+```{r}
+
+## need to filter out 2017 elections as well:
+
+## subsetter til bare Norge, Danmark, UK:
+parlgov_streng <- filter(parlgov, country_name_short == "DNK" |
+         country_name_short == "NOR" |
+         country_name_short == "GBR")
+
+
+parlgov_streng <- parlgov_streng %>%
+  mutate(election_year =
+           substr(election_date, 1, 4))
+
+parlgov_streng <- parlgov_streng %>%
+  filter(election_year >= 2005 & election_year < 2017)
+
+## subsetter til bare relevante variabler 
+parlgov_streng <- parlgov_streng %>%
+  select(country_name,
+         election_date,
+         election_year,
+         cabinet_party,
+         prime_minister,
+         seats,
+         election_seats_total,
+         party_name_short,
+         party_name,
+         party_id)
+
+
+parlgov_streng <- parlgov_streng %>%
+  distinct(party_name, election_date, .keep_all = TRUE)
+
+## making seat share variable:
+parlgov_streng <- parlgov_streng %>%
+  mutate(seat_share = 
+           seats/election_seats_total)
+
+## making average seat share variable: 
+avg_seat_share_streng <- aggregate(seat_share ~ party_id, data = parlgov_streng, FUN = mean)
+
+names(avg_seat_share_streng)[which(names(avg_seat_share_streng) == "seat_share")] <- "avg_seat_share"
+
+parlgov_streng <- parlgov_streng %>%
+  left_join(avg_seat_share_streng,
+            by = "party_id")
+
+## making avg govt satus variable:
+avg_govt_status_streng <- aggregate(cabinet_party ~ party_id, data = parlgov_streng, FUN = mean)
+
+names(avg_govt_status_streng)[which(names(avg_govt_status_streng) == "cabinet_party")] <- "avg_govt_status"
+
+parlgov_streng <- parlgov_streng %>%
+  left_join(avg_govt_status_streng,
+            by = "party_id")
+
+
+## renaming party names to corresponf to PAIRDEM data 
+
+parlgov_streng <- parlgov_streng %>%
+  mutate(party = 
+           case_when(party_name_short == "Sd" ~ "sd",
+                     party_name_short == "RV" ~ "rv",
+                     party_name_short == "KF" ~ "kf",
+                     party_name_short == "SF" & country_name == "Denmark" ~ "sf",
+                     party_name_short == "V" & country_name == "Denmark" ~ "vdk",
+                     party_name_short == "En-O" ~ "el",
+                     party_name_short == "DF" ~ "df",
+                     party_name_short == "NLA" ~ "la",
+                     party_name_short == "Con" ~ "cons",
+                     party_name_short == "Lab" ~ "lab",
+                     party_name_short == "Lib" ~ "libdem",
+                     party_name_short == "SNP" ~ "snp",
+                     party_name_short == "Plaid" ~ "plaid",
+                     party_name_short == "GP" ~ "green",
+                     party_name_short == "UKIP" ~ "ukip",
+                     party_name_short == "DNA" ~ "ap",
+                     party_name_short == "Fr" ~ "frp",
+                     party_name_short == "H" ~ "h",
+                     party_name_short == "SV" ~ "sv",
+                     party_name_short == "Sp" ~ "spno",
+                     party_name_short == "KrF" ~ "krf",
+                     party_name_short == "V" & country_name == "Norway" ~ "vno",
+                     party_name_short == "MDG" ~ "mdg"
+                     )
+  )
+
+
+#### constructing variable for analysis: ######
+
+
+## subsetting obs from elections that match data collection start:
+parlgov_streng_analyse <- parlgov_streng %>%
+  filter(election_year >= 2013)
+
+
+## constructing variable:
+parlgov_streng_analyse <- parlgov_streng_analyse %>%
+  mutate(party_power3 =
+           (((seat_share + avg_seat_share)/2) + 
+           ((cabinet_party + avg_govt_status)/2))/2)
+
+## checking distribution:
+summary((parlgov_streng_analyse$party_power3))
+
+
+```
+
+
+
+## Adding compromise and niche variables:
+
+```{r}
+
+## Loading data:
+
+niche <- read.csv("data/nisje.csv")
+
+niche <- niche %>% 
+  filter(country == "Norway" | country == "Denmark" | country == "UK")
+  
+
+## removing irrelevant variables and reduce to 1 obs per party:
+
+niche_clean <- niche %>%
+  select(party, partygoals, country, lhrw, niche)
+
+niche_clean <- niche_clean %>%
+  distinct(party, country, .keep_all = TRUE)
+
+
+
+## changing variable names to correspond to parlgov:
+
+niche_clean$party <- 
+  ifelse(niche_clean$party == "DF", "df", niche_clean$party)
+
+niche_clean$party <- 
+  ifelse(niche_clean$party == "sp_no", "spno", niche_clean$party)
+
+niche_clean$party <- 
+  ifelse(niche_clean$party == "v_dk", "vdk", niche_clean$party)
+    
+niche_clean$party <- 
+  ifelse(niche_clean$party == "v_no", "vno", niche_clean$party)    
+    
+## testing:  
+table(niche_clean$party)
+
+table(parlgov_streng$party)  
+
+### NICE! merging into parlgov: 
+
+niche_clean <- niche_clean %>%
+  select(party, partygoals, lhrw, niche)
+
+parlgov_streng_analyse <- parlgov_streng_analyse %>%
+  left_join(niche_clean, by = "party")
+
+## Removing party obs that are not a part of PAIRDEM data:
+parlgov_streng_analyse <- parlgov_streng_analyse %>%
+  filter(is.na(party)== FALSE)
+
+
+
+### MErging party power, niche and policy purity into final_dat:
+
+parlgov_streng_analyse <- parlgov_streng_analyse %>%
+  select(party, cabinet_party, seat_share, avg_seat_share, avg_govt_status, party_power3, partygoals, lhrw, niche)
+
+
+companies_analysis <- final_dat2 %>%
+  left_join(parlgov_streng_analyse, by = "party")
+
+```
+
+
+
+### constructing policy workers variable:
+
+
+```{r}
+companies_analysis <- companies_analysis %>%
+  mutate(policy_workers = 
+           case_when(gov_affairs_structured == "Governmental affairs are coordinated and directed by one single department" & 
+                       fulltime_policy == 0 ~ 1,
+             gov_affairs_structured == "Governmental affairs are coordinated and directed by one single department" & 
+                       fulltime_policy == 1 ~ 1,
+                     gov_affairs_structured == "Governmental affairs are coordinated and directed by one single department" & 
+                       fulltime_policy == 2 ~ 1,
+                     gov_affairs_structured == "Governmental affairs are coordinated and directed by one single department" & 
+                       fulltime_policy == 3 ~ 1,
+                     gov_affairs_structured == "Governmental affairs are coordinated and directed by one single department" & 
+                       fulltime_policy == 4 ~ 1,
+                     gov_affairs_structured == "Governmental affairs are coordinated and directed by one single department" & 
+                       fulltime_policy == 5 ~ 1,
+                     gov_affairs_structured == "Governmental affairs are coordinated and directed by one single department" & 
+                       fulltime_policy == 6666 ~ NA,
+                     gov_affairs_structured == "The competence for governmental affairs is distributed across several departments" &
+                       fulltime_policy_dich == 1 ~ 1,
+                     gov_affairs_structured == "The competence for governmental affairs is distributed across several departments" &
+                       fulltime_policy_dich == 0 ~ 0,
+                     gov_affairs_structured == "Our company mostly works through a business/trade association" ~ 0, ## hadde NA passet bedre her?
+                    gov_affairs_structured == "Our company mostly employs external consultants to deal with governmental affairs" ~ 0, gov_affairs_structured == "None of the above" ~ NA,
+                     ))
+
+
+table(companies_analysis$policy_workers)
+```
+
+### Constructing donations variable
+
+```{r}
+addmargins(table(companies_analysis$directfinancial, companies_analysis$directfin))
+
+table(utendrit$directfinancial)
+
+## adding variables together:
+companies_analysis <- companies_analysis %>%
+mutate(donations = directfin + indirectfin) %>%
+  mutate(donations = ifelse(donations > 0, 1, donations)) 
+
+table(companies_analysis$donations)
+
+```
+
+### Constructing categorical proximity variable for analysis
+
+
+```{r}
+
+
+
+##### Constructing categorical proximity variable for analysis ######
+
+## taxation versus public spending dimension:
+companies_analysis <- companies_analysis %>% 
+  mutate(factordist_taxvspending =
+           case_when(is.na(policydistance_taxvspending)
+                     == TRUE ~ "dont know/not applicable",
+                     policydistance_taxvspending 
+                     <= 1 ~ "Very proximate",
+                     policydistance_taxvspending > 1 & 
+                       policydistance_taxvspending 
+                     <= 2.5 ~ "somewhat proximate",
+                     policydistance_taxvspending > 2.5 & 
+                       policydistance_taxvspending 
+                     <= 5 ~ "not proximate",
+                     policydistance_taxvspending 
+                     > 5 ~"not at all proximate")) %>%
+  mutate(factordist_taxvspending = 
+           as.factor(factordist_taxvspending))
+
+table(companies_analysis$factordist_taxvspending)
+
+## regulation dimension: 
+companies_analysis <- companies_analysis %>% 
+  mutate(factordist_regulation =
+           case_when(is.na(policydistance_regulation)
+                     == TRUE ~ "dont know/not applicable",
+                     policydistance_regulation 
+                     <= 1 ~ "Very proximate",
+                     policydistance_regulation > 1 & 
+                       policydistance_regulation 
+                     <= 2.5 ~ "somewhat proximate",
+                     policydistance_regulation > 2.5 & 
+                       policydistance_regulation 
+                     <= 5 ~ "not proximate",
+                     policydistance_regulation 
+                     > 5 ~"not at all proximate")) %>%
+  mutate(factordist_regulation = 
+           as.factor(factordist_regulation))
+
+table(companies_analysis$factordist_regulation)
+
+## making not at all proximate reference category:
+companies_analysis$factordist_taxvspending <- relevel(companies_analysis$factordist_taxvspending, ref = "not at all proximate")
+
+companies_analysis$factordist_regulation <- relevel(companies_analysis$factordist_regulation, ref = "not at all proximate")
+
+```
+
+
+
+```{r}
+
+### saving data:
+
+
+save(companies_analysis, file = "companies_analysis.Rdata")
+
+write.csv(companies_analysis,"data/companies_analysis.csv", row.names = FALSE)
+
+```
+
+
